@@ -240,14 +240,14 @@ class SecAITestSuite(unittest.TestCase):
         # Test /api/profile endpoint and user profile memory
         from secai.core.database import get_memory_context, get_user_profile, set_user_profile
 
-        set_user_profile("Ben Kayra, siber guvenlik uzmani.")
-        self.assertEqual(get_user_profile(), "Ben Kayra, siber guvenlik uzmani.")
+        set_user_profile("Siber guvenlik uzmani ve arastirmaci.")
+        self.assertEqual(get_user_profile(), "Siber guvenlik uzmani ve arastirmaci.")
         mem_ctx = get_memory_context()
-        self.assertIn("Kayra", mem_ctx)
+        self.assertIn("arastirmaci", mem_ctx)
 
         status, prof_res = req("/api/profile")
         self.assertEqual(status, 200)
-        self.assertEqual(prof_res["profile"], "Ben Kayra, siber guvenlik uzmani.")
+        self.assertEqual(prof_res["profile"], "Siber guvenlik uzmani ve arastirmaci.")
 
         status, post_prof = req("/api/profile", method="POST", data={"profile": "Guncel Profil Bilgisi"})
         self.assertEqual(status, 200)
@@ -265,7 +265,7 @@ class SecAITestSuite(unittest.TestCase):
         # Test session title determination, update, and /api/sessions/rename
         from secai.core.database import auto_title_session, create_session, determine_chat_title, update_session_title
 
-        self.assertEqual(determine_chat_title("muhabbet kuşum 6 aylık ona dişi alacağım"), "Muhabbet Kuşu & Evcil")
+        self.assertEqual(determine_chat_title("evcil hayvan ve kedi kopek bakimi"), "Evcil Hayvan & Bakım")
         self.assertEqual(determine_chat_title("Sistemimdeki açık portları ve servisleri listele"), "Açık Port Analizi")
         self.assertEqual(determine_chat_title("CIS Linux güvenlik puanını hesapla"), "CIS Güvenlik Skoru")
 

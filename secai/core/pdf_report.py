@@ -213,7 +213,7 @@ def generate_custom_pdf_report(
     output_path: Optional[Path] = None,
 ) -> Path:
     """Kurumsal standartlarda tam biçimlendirilmiş profesyonel bir siber güvenlik PDF raporu üretir."""
-    user_profile = get_user_profile() or "Kayra Divrik (Lead SecOps Analyst)"
+    user_profile = get_user_profile() or "SecOps Security Analyst"
 
     slug = re.sub(r"[^a-zA-Z0-9_-]+", "_", title.lower()).strip("_") or "report"
     ref_id = f"#SEC-2026-N{note_id:04d}" if note_id else f"#SEC-2026-{datetime.now().strftime('%m%d%H%M')}"
@@ -333,7 +333,7 @@ def generate_custom_pdf_report(
 
     # 2. Üst Metadata Tablosu
     now_str = created_at or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    analyst_name = user_profile.split(".")[0][:45] if user_profile else "Kayra Divrik"
+    analyst_name = user_profile.split(".")[0][:45] if user_profile else "SecOps Analyst"
     meta_rows = [
         [
             Paragraph(f"<b>Rapor Referans No:</b> {ref_id}", styles["MetaCell"]),

@@ -141,9 +141,11 @@ def make_handler(token: str):
                 info = get_active_llm_info()
                 settings = load_settings()
                 active_skill = get_active_skill()
+                import getpass
                 return self._send_json(
                     {
                         "version": __version__,
+                        "user": getpass.getuser(),
                         "provider": info["provider_label"],
                         "model": info["model"],
                         "active_skill": active_skill["name"] if active_skill else None,

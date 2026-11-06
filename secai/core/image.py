@@ -40,7 +40,7 @@ def _generate_via_aihorde(prompt: str, timeout_sec: int = 40) -> Optional[tuple[
     submit_url = "https://aihorde.net/api/v2/generate/async"
     headers = {
         "apikey": "0000000000",
-        "Client-Agent": "SecAI:0.8.0:kayradivrik",
+        "Client-Agent": "SecAI:0.9.0:user",
         "Content-Type": "application/json",
     }
     payload = {

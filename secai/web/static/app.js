@@ -1453,8 +1453,8 @@ function App() {
         <!-- User / Hardware Pill Footer -->
         <div class="h-12 border-t border-zinc-850 p-3 flex items-center justify-between text-xs text-zinc-400 font-mono">
           <div class="flex items-center gap-2 truncate">
-            <span class="w-5 h-5 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center text-[10px] text-zinc-300">K</span>
-            <span class="truncate text-[11px]">Kayra Divrik</span>
+            <span class="w-5 h-5 rounded bg-zinc-800 border border-zinc-700 flex items-center justify-center text-[10px] text-zinc-300">${(status?.user || "U")[0].toUpperCase()}</span>
+            <span class="truncate text-[11px]">${status?.user || "SecAI Workspace"}</span>
           </div>
           <span class="text-[10px] text-zinc-600">RTX 4050</span>
         </div>

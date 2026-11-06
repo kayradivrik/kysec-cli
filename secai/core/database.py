@@ -546,7 +546,7 @@ def delete_session(session_id: str) -> bool:
 
 
 SESSION_TITLE_PATTERNS = [
-    (r"(?i)(muhabbet\s+ku[sş]|ku[sş]|papa[gğ]an|kedi|k[oö]pek|evcil|veteriner)", "Muhabbet Kuşu & Evcil"),
+    (r"(?i)(ku[sş]|papa[gğ]an|kedi|k[oö]pek|evcil|veteriner)", "Evcil Hayvan & Bakım"),
     (r"(?i)(a[cç][ıi]k\s+port|port\s+analiz|portlar|dinleyen\s+servis)", "Açık Port Analizi"),
     (r"(?i)(cis|hardening|s[ıi]k[ıi]la[sş]t[ıi]rma|g[uü]venlik\s+skor)", "CIS Güvenlik Skoru"),
     (r"(?i)(baseline|sapma|referans|snapshot)", "Sistem Baseline & Sapma"),
