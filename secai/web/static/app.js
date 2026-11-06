@@ -191,7 +191,7 @@ function MarkdownRenderer({ content }) {
 }
 
 // --- Main Chat Experience with Full Voice & TTS Integration ---
-function ChatView({ activeSession, setActiveSession, sessions, setSessions, activeSkill, autoSpeak, setAutoSpeak }) {
+function ChatView({ activeSession, setActiveSession, sessions, setSessions, activeSkill, autoSpeak, setAutoSpeak, onStatusUpdate }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -396,6 +396,7 @@ function ChatView({ activeSession, setActiveSession, sessions, setSessions, acti
         speakMessage(acc, newIndex);
       }
       api("/api/sessions").then((r) => r.json()).then(setSessions);
+      if (onStatusUpdate) onStatusUpdate();
     } catch {
       setMessages((prev) => [
         ...prev.slice(0, -1),
@@ -1139,6 +1140,15 @@ function App() {
       setSessions(d);
       if (d.length > 0) setActiveSession(d[0].id);
     }).catch(() => {});
+
+    const handleOutsideClick = (e) => {
+      if (!e.target.closest(".dropdown-container")) {
+        setSkillMenuOpen(false);
+        setModelMenuOpen(false);
+      }
+    };
+    window.addEventListener("click", handleOutsideClick);
+    return () => window.removeEventListener("click", handleOutsideClick);
   }, []);
 
   const handleNewChat = async () => {
@@ -1273,7 +1283,7 @@ function App() {
 
           <div class="flex items-center gap-2">
             <!-- Ajan (Agent / Skill) Selector Dropdown -->
-            <div class="relative">
+            <div class="relative dropdown-container">
               <button
                 onClick=${() => { setSkillMenuOpen(!skillMenuOpen); setModelMenuOpen(false); }}
                 class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-300 hover:border-zinc-700 transition-colors"
@@ -1319,7 +1329,7 @@ function App() {
             </div>
 
             <!-- Active LLM Model Selector Dropdown -->
-            <div class="relative">
+            <div class="relative dropdown-container">
               <button
                 onClick=${() => { setModelMenuOpen(!modelMenuOpen); setSkillMenuOpen(false); }}
                 class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-300 hover:border-zinc-700 transition-colors"
@@ -1363,7 +1373,7 @@ function App() {
 
         <!-- Dynamic View Router -->
         <div class="flex-1 flex overflow-hidden">
-          ${tab === "chat" && html`<${ChatView} activeSession=${activeSession} setActiveSession=${setActiveSession} sessions=${sessions} setSessions=${setSessions} activeSkill=${activeSkill} autoSpeak=${autoSpeak} setAutoSpeak=${setAutoSpeak} />`}
+          ${tab === "chat" && html`<${ChatView} activeSession=${activeSession} setActiveSession=${setActiveSession} sessions=${sessions} setSessions=${setSessions} activeSkill=${activeSkill} autoSpeak=${autoSpeak} setAutoSpeak=${setAutoSpeak} onStatusUpdate=${loadStatus} />`}
           ${tab === "agents" && html`<${AgentsView} activeSkill=${activeSkill} onSelectAgent=${switchSkill} onSendToChat=${handleSendToChat} />`}
           ${tab === "intel" && html`<${IntelView} onSendToChat=${handleSendToChat} />`}
           ${tab === "baseline" && html`<${BaselineView} onSendToChat=${handleSendToChat} />`}

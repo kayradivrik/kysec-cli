@@ -87,6 +87,9 @@ from secai.core.web import format_web_results
 console = Console()
 
 SLASH_COMMANDS = [
+    "/agent",
+    "/agents",
+    "/ajan",
     "/new",
     "/chats",
     "/memory",
@@ -1121,7 +1124,10 @@ def run_interactive_menu(status_callback=None) -> None:
                 switch_model_interactive()
                 continue
 
-            if low in ("/skills", "/skill", "skills", "skill", "yetenek") or low.startswith("/skill ") or low.startswith("skill "):
+            if (
+                low in ("/agent", "/agents", "agent", "agents", "/ajan", "ajan", "/skills", "/skill", "skills", "skill", "yetenek")
+                or low.startswith(("/agent ", "agent ", "/ajan ", "ajan ", "/skill ", "skill "))
+            ):
                 parts = user_input.split(maxsplit=1)
                 arg = parts[1] if len(parts) > 1 else ""
                 manage_skills_interactive(inline_arg=arg)
