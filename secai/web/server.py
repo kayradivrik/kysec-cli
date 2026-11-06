@@ -219,6 +219,24 @@ def make_handler(token: str):
                 )
 
             if path.startswith("/api/notes/"):
+                if path.endswith("/pdf"):
+                    parts = path.strip("/").split("/")
+                    if len(parts) >= 3 and parts[2].isdigit():
+                        note_id = int(parts[2])
+                        from secai.core.pdf_report import generate_note_pdf_report
+                        try:
+                            pdf_path = generate_note_pdf_report(note_id)
+                            pdf_data = pdf_path.read_bytes()
+                            self.send_response(200)
+                            self.send_header("Content-Type", "application/pdf")
+                            self.send_header("Content-Disposition", f'inline; filename="{pdf_path.name}"')
+                            self.send_header("Content-Length", str(len(pdf_data)))
+                            self.end_headers()
+                            self.wfile.write(pdf_data)
+                            return
+                        except Exception as e:
+                            return self._send_json({"error": str(e)}, 500)
+
                 raw_id = path.rsplit("/", 1)[-1]
                 if not raw_id.isdigit():
                     return self._send_json({"error": "gecersiz id"}, 400)
@@ -226,6 +244,24 @@ def make_handler(token: str):
                 if not note:
                     return self._send_json({"error": "bulunamadi"}, 404)
                 return self._send_json(dict(note))
+
+            if path.startswith("/api/sessions/") and path.endswith("/pdf"):
+                parts = path.strip("/").split("/")
+                if len(parts) >= 3:
+                    s_id = parts[2]
+                    from secai.core.pdf_report import generate_session_pdf_report
+                    try:
+                        pdf_path = generate_session_pdf_report(s_id)
+                        pdf_data = pdf_path.read_bytes()
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/pdf")
+                        self.send_header("Content-Disposition", f'inline; filename="{pdf_path.name}"')
+                        self.send_header("Content-Length", str(len(pdf_data)))
+                        self.end_headers()
+                        self.wfile.write(pdf_data)
+                        return
+                    except Exception as e:
+                        return self._send_json({"error": str(e)}, 500)
 
             if path == "/api/score":
                 return self._send_json(calculate_hardening_score())

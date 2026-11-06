@@ -136,12 +136,19 @@ def note_show(
 @note_app.command("export")
 def note_export(
     note_id: int = typer.Argument(..., help="Not ID"),
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Dosya yolu (.md)"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Dosya yolu"),
+    fmt: str = typer.Option("pdf", "--format", "-f", help="Format: pdf veya md (varsayılan: pdf)"),
 ):
-    """Notu Markdown (.md) dosyasina aktarir."""
+    """Notu kurumsal PDF veya Markdown (.md) dosyasina aktarir."""
+    from secai.core.pdf_report import generate_note_pdf_report
+
     try:
-        export_path = export_note_markdown(note_id=note_id, output_path=output)
-        console.print(f"[bold green][+][/bold green] Disa aktarildi: {export_path}")
+        if fmt.lower() == "pdf":
+            export_path = generate_note_pdf_report(note_id=note_id, output_path=output)
+            console.print(f"[bold green][+][/bold green] Kurumsal PDF Raporu üretildi: [cyan]{export_path}[/cyan]")
+        else:
+            export_path = export_note_markdown(note_id=note_id, output_path=output)
+            console.print(f"[bold green][+][/bold green] Markdown dışa aktarıldı: [cyan]{export_path}[/cyan]")
     except ValueError as err:
         console.print(f"[bold red][-][/bold red] {err}")
         raise typer.Exit(code=1)

@@ -1,12 +1,15 @@
-# secai (v0.8.0 - Altın Sürüm / Golden Release)
+# secai (v0.9.0 - AI Image Studio & Corporate PDF Edition)
 
 Terminal ve modern web tabanlı, çift yönlü sesli SecOps asistanı, vaka defteri ve Linux sıkılaştırma motoru.
-Yerel modeller (Ollama) veya Google Gemini API ile çalışır; sistem telemetrisi, tehdit istihbaratı, referans sapma takibi ve SQLite tabanlı vaka yönetimi sağlar.
+Yerel modeller (Ollama RTX 4050 GPU offload) veya Google Gemini API ile çalışır; sistem telemetrisi, tehdit istihbaratı, referans sapma takibi, kurumsal PDF raporlama ve SQLite tabanlı vaka yönetimi sağlar.
 
 ---
 
 ## Öne Çıkan Yetenekler
 
+- 📄 **Kurumsal Siber Güvenlik PDF Raporlama (New!):** Vaka Defteri kayıtlarını ve penetrasyon testi bulgularını tek tıkla şirketlere ve denetçilere sunulabilecek resmi standartlarda (Executive Summary, Scope, Findings, Hardening Checklist, Sign-off) PDF raporlarına dönüştürme.
+- 🎨 **Yapay Zeka Görsel Üretimi (AI Image Studio - New!):** Sıfır kurulum ve API anahtarı istemeden açık GPU ağı (Stable Diffusion) üzerinden `/image` veya Web UI ile saniyeler içinde görsel üretme.
+- 🏷️ **Akıllı Sohbet Başlığı Belirleme (New!):** Sohbetleri ilk mesaja göre semantik analizle otomatik adlandırma ve tek tıkla yeniden adlandırabilme (`/rename`).
 - 🎙️ **Çift Yönlü Sesli Sohbet (Voice Mode):** Mikrofon konuşma tanıma (STT) ve Microsoft Edge Neural TTS (`tr-TR-AhmetNeural` / `tr-TR-EmelNeural`) ile hem terminalde hem web arayüzünde canlı sesli diyalog.
 - 🕵️ **SecOps Ajanları Hub (Agent Switcher):** Göreve özel uzmanlık profilleri:
   - `🎯 Genel SecOps Ajanı`: Temel Linux ve güvenlik analizi.
@@ -18,6 +21,14 @@ Yerel modeller (Ollama) veya Google Gemini API ile çalışır; sistem telemetri
 - 📈 **Sistem Baseline & Sapma Takibi (Drift Detection):** Sistem referans noktası alıp yeni açılan portları veya başlatılan yetkisiz servisleri anında tespit etme.
 - 🛡️ **Deterministik CIS Linux Güvenlik Skoru (0-100):** Çekirdek, ağ ve yetki ayarlarını denetleyip tek tıkla düzeltme önerileri sunma.
 - 🎨 **Minimalist Geliştirici Arayüzü (Linear / Raycast Style):** Sıfır generic efekt, derin koyu tema (`#08080a`), syntax-highlighted kopyalanabilir kod blokları ve responsive düzen.
+
+---
+
+## Gelecek Planları (Roadmap / Yapılacaklar)
+
+- [ ] 🤖 **Multi-Agent Orkestrasyonu (Ajanların Birbiriyle Otonom Konuşması):** Örneğin Recon Ajanının bulduğu açığı otomatik olarak Hardening Ajanına paslayıp çözüm üretmesi.
+- [ ] 🔒 **Sandboxed Araç Çalıştırma:** İzolasyonlu container/firejail ortamında nmap, masscan ve tcpdump çıktılarının otonom analizi.
+- [ ] 📊 **Gelişmiş Uyumluluk Çerçeveleri:** ISO 27001 ve NIST CSF uyumluluk haritalaması.
 
 ---
 

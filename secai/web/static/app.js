@@ -981,10 +981,22 @@ function NotesView() {
           <button onClick=${() => setSelected(null)} class="text-xs text-zinc-400 hover:text-zinc-200 flex items-center gap-1.5 py-1">
             ← Notlara Dön
           </button>
-          <div class="border-b border-zinc-800 pb-3">
-            <span class="text-xs font-mono text-zinc-500 uppercase tracking-wider">#${selected.id} · ${selected.category}</span>
-            <h1 class="text-lg font-semibold text-zinc-100 mt-1">${selected.title}</h1>
-            <span class="text-xs text-zinc-600">${selected.created_at} · ${selected.tags || "etiketsiz"}</span>
+          <div class="border-b border-zinc-800 pb-3 flex items-start justify-between">
+            <div>
+              <span class="text-xs font-mono text-zinc-500 uppercase tracking-wider">#${selected.id} · ${selected.category}</span>
+              <h1 class="text-lg font-semibold text-zinc-100 mt-1">${selected.title}</h1>
+              <span class="text-xs text-zinc-600">${selected.created_at} · ${selected.tags || "etiketsiz"}</span>
+            </div>
+            <a
+              href="/api/notes/${selected.id}/pdf"
+              target="_blank"
+              download="secai_report_${selected.id}.pdf"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-medium transition-colors shadow-sm"
+              title="Kurumsal Siber Güvenlik Raporu (PDF)"
+            >
+              <span>Kurumsal PDF İndir</span>
+              <span>📄</span>
+            </a>
           </div>
           <div class="pt-2">
             <${MarkdownRenderer} content=${selected.content} />
@@ -1013,7 +1025,19 @@ function NotesView() {
                 </div>
                 <span class="text-[10px] text-zinc-600 mt-0.5 block">${n.created_at}</span>
               </div>
-              <span class="text-[11px] font-mono text-zinc-400 bg-zinc-800/80 px-2 py-0.5 rounded border border-zinc-700/60">${n.category}</span>
+              <div class="flex items-center gap-2">
+                <a
+                  href="/api/notes/${n.id}/pdf"
+                  target="_blank"
+                  download="secai_report_${n.id}.pdf"
+                  onClick=${(e) => e.stopPropagation()}
+                  class="px-2 py-0.5 rounded text-[11px] font-mono text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/40 border border-emerald-800/40 transition-colors"
+                  title="Kurumsal PDF İndir"
+                >
+                  PDF 📄
+                </a>
+                <span class="text-[11px] font-mono text-zinc-400 bg-zinc-800/80 px-2 py-0.5 rounded border border-zinc-700/60">${n.category}</span>
+              </div>
             </div>`)}
         </div>
       </div>

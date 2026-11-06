@@ -278,6 +278,20 @@ class SecAITestSuite(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(rename_res["title"], "Manuel Başlık")
 
+        # Test Corporate PDF Report generation
+        from secai.core.pdf_report import generate_note_pdf_report
+        pdf_n_id = add_note(title="Denetim Bulgusu", content="## Acik Portlar\n| Port | Servis |\n| 22 | SSH |\n```bash\nnmap -sV localhost\n```\n- Kritik zafiyet yok.", category="secops", tags="audit")
+        pdf_file = generate_note_pdf_report(pdf_n_id)
+        self.assertTrue(pdf_file.exists())
+        self.assertGreater(pdf_file.stat().st_size, 500)
+
+        # Test /api/notes/<id>/pdf endpoint
+        req_pdf = urllib.request.Request(f"http://127.0.0.1:{server.server_port}/api/notes/{pdf_n_id}/pdf", headers={"X-SecAI-Token": token})
+        with urllib.request.urlopen(req_pdf) as resp_pdf:
+            self.assertEqual(resp_pdf.status, 200)
+            self.assertEqual(resp_pdf.headers.get("Content-Type"), "application/pdf")
+            self.assertGreater(len(resp_pdf.read()), 500)
+
         server.shutdown()
         server.server_close()
 

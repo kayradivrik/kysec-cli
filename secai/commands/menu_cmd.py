@@ -829,10 +829,22 @@ def generate_session_report(session: str = "default") -> None:
             tags="report,secops",
         )
         md_path = export_note_markdown(nid)
-        console.print(
-            f"[bold green][+][/bold green] Rapor Vaka Defterine kaydedildi (#{nid}) ve Markdown olarak disa aktarildi:\n"
-            f"    [cyan]{md_path}[/cyan]\n"
-        )
+        from secai.core.pdf_report import generate_note_pdf_report
+        try:
+            pdf_path = generate_note_pdf_report(nid)
+            console.print(
+                f"[bold green][+][/bold green] Rapor Vaka Defterine kaydedildi (#{nid}).\n"
+                f"    • [bold cyan]Kurumsal PDF Raporu:[/bold cyan] [bold green]{pdf_path}[/bold green]\n"
+                f"    • [dim]Markdown:[/dim] [cyan]{md_path}[/cyan]\n"
+            )
+            import shutil, subprocess
+            if shutil.which("xdg-open"):
+                subprocess.Popen(["xdg-open", str(pdf_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            console.print(
+                f"[bold green][+][/bold green] Rapor Vaka Defterine kaydedildi (#{nid}) ve Markdown olarak disa aktarildi:\n"
+                f"    [cyan]{md_path}[/cyan] (PDF Hatasi: {e})\n"
+            )
 
 
 def _stream_reply(messages: list[dict]) -> str:
