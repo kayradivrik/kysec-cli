@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: secai
+Version: 0.1.0
+Summary: SecOps CLI Asistanı & Vaka Defteri
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: typer>=0.9.0
+Requires-Dist: rich>=13.0.0
+
+# SecAI — SecOps CLI Asistanı & Vaka Defteri
+
+Yerel LLM (Ollama / Qwen 2.5 Coder) destekli, Cross-Platform (Linux & Windows) Siber Güvenlik CLI Asistanı ve Vaka/Proje Defteri.
+

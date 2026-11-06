@@ -1,0 +1,11 @@
+README.md
+pyproject.toml
+secai/__init__.py
+secai/cli.py
+secai/config.py
+secai.egg-info/PKG-INFO
+secai.egg-info/SOURCES.txt
+secai.egg-info/dependency_links.txt
+secai.egg-info/entry_points.txt
+secai.egg-info/requires.txt
+secai.egg-info/top_level.txt
