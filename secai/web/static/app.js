@@ -40,6 +40,7 @@ const Icon = {
   Sparkles: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"></path></svg>`,
   Layers: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>`,
   Bot: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"></rect><circle cx="12" cy="5" r="2"></circle><path d="M12 7v4"></path><line x1="8" y1="16" x2="8" y2="16"></line><line x1="16" y1="16" x2="16" y2="16"></line></svg>`,
+  Image: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`,
   Cpu: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg>`,
 };
 
@@ -62,8 +63,11 @@ const HIDDEN = /```(?:save-note|update-note|delete-note|export-note|web-search|i
 
 function inline(s) {
   return s
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<div class="my-3 rounded-lg overflow-hidden border border-zinc-800 bg-zinc-900/60 p-2 max-w-lg mx-auto"><img src="$2" alt="$1" class="rounded max-h-[480px] w-auto object-contain mx-auto shadow-2xl" loading="lazy" /><div class="mt-2 text-center text-xs text-zinc-400 font-mono flex items-center justify-center gap-3"><span>$1</span><a href="$2" download="secai_image" class="text-emerald-400 hover:text-emerald-300 font-sans text-[11px] underline">İndir 📥</a></div></div>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-emerald-400 hover:underline">$1</a>')
     .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
 }
 
 function parseBlocks(src) {
@@ -407,6 +411,7 @@ function ChatView({ activeSession, setActiveSession, sessions, setSessions, acti
   };
 
   const emptyPrompts = [
+    { label: "Görsel Oluştur (/image)", cmd: "/image cyberpunk hacker terminal neon matrix dijital sanat" },
     { label: "Beni Tanı & Kimlik Yaz (/infomy)", cmd: "/infomy" },
     { label: "SecOps Ajanını Değiştir (/agent)", cmd: "/agent" },
     { label: "Açık TCP/UDP portlarını denetle", cmd: "Sistemimdeki açık portları ve dinleyen servisleri analiz et" },
@@ -559,6 +564,22 @@ function ChatView({ activeSession, setActiveSession, sessions, setSessions, acti
                   <${Icon.Volume2} />
                   <span>${autoSpeak ? "Sesli Mod: Açık" : "Ses"}</span>
                 </button>
+
+                <!-- Image Generation Quick Action -->
+                <button
+                  onClick=${() => {
+                    const current = input.trim();
+                    if (!current.startsWith('/image')) {
+                      setInput('/image ' + current);
+                    }
+                    textareaRef.current?.focus();
+                  }}
+                  title="Yapay zeka ile görsel üret (/image)"
+                  class="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-mono hover:text-zinc-200 hover:bg-zinc-800/60 text-zinc-400 transition-colors"
+                >
+                  <${Icon.Image} />
+                  <span class="hidden md:inline">Görsel</span>
+                </button>
               </div>
 
               <div class="flex items-center gap-2.5">
@@ -574,7 +595,7 @@ function ChatView({ activeSession, setActiveSession, sessions, setSessions, acti
             </div>
           </div>
           <div class="text-center mt-2">
-            <span class="text-[11px] text-zinc-600 tracking-tight">SecAI v0.8.0 · Çift Yönlü Ses Motoru & Sistem Tehdit İstihbaratı</span>
+            <span class="text-[11px] text-zinc-600 tracking-tight">SecAI v0.9.0 · AI Image Studio & Çift Yönlü Ses Motoru</span>
           </div>
         </div>
       </div>
@@ -1284,7 +1305,7 @@ function App() {
           <div class="flex items-center gap-2 font-mono text-xs font-semibold text-zinc-300 tracking-tight">
             <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
             <span>secai</span>
-            <span class="text-[10px] text-zinc-500 font-normal">v0.8.0</span>
+            <span class="text-[10px] text-zinc-500 font-normal">v0.9.0</span>
           </div>
           <button onClick=${() => setSidebarOpen(false)} class="p-1 text-zinc-500 hover:text-zinc-300 rounded hover:bg-zinc-800 transition-colors">
             <${Icon.Sidebar} />

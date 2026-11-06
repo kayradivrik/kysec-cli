@@ -50,6 +50,7 @@ from secai.core.executor import (
     extract_saved_notes,
     strip_internal_blocks,
 )
+from secai.core.image import generate_image_data, list_generated_images
 from secai.core.intel import format_intel_report
 from secai.core.llm import OllamaConnectionError, stream_chat, stream_generate
 from secai.core.skills import get_active_skill, list_all_skills, set_active_skill
@@ -173,6 +174,9 @@ def make_handler(token: str):
             if path == "/api/skills":
                 return self._send_json(list_all_skills())
 
+            if path == "/api/images":
+                return self._send_json(list_generated_images())
+
             if path == "/api/baseline/diff":
                 diff = compare_with_baseline()
                 return self._send_json(diff)
@@ -278,6 +282,16 @@ def make_handler(token: str):
                 name = data.get("name")
                 chosen = set_active_skill(name)
                 return self._send_json({"active": chosen["name"] if chosen else None})
+
+            if path == "/api/image/generate":
+                data = self._read_json()
+                prompt = data.get("prompt", "").strip()
+                if not prompt:
+                    return self._send_json({"error": "prompt bos olamaz"}, 400)
+                res = generate_image_data(prompt)
+                if not res:
+                    return self._send_json({"error": "gorsel olusturulamadi"}, 500)
+                return self._send_json({"ok": True, **res})
 
             if path == "/api/model/set":
                 data = self._read_json()
@@ -387,6 +401,35 @@ def make_handler(token: str):
                         "\n_İpucu: Sağ üstteki **'Ajan'** butonundan veya sol menüdeki **'Ajanlar'** sekmesinden tek tıkla değiştirebilirsiniz._"
                     )
                     reply = "\n".join(lines)
+
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(reply.encode("utf-8"))
+                add_chat_message(session_id=session_id, role="assistant", content=reply)
+                return
+
+            if raw_cmd.startswith(("/image", "/img", "/ciz", "/gorsel", "/görsel")):
+                parts = raw_cmd.split(maxsplit=1)
+                prompt = parts[1].strip() if len(parts) > 1 else ""
+                if not prompt:
+                    reply = (
+                        "🎨 **SecAI Image Studio**\n\n"
+                        "Görsel oluşturmak için komutun yanına bir prompt yazın:\n"
+                        "Örnek: `/image neon siber güvenlik kalkanı, dijital sanat`"
+                    )
+                else:
+                    res = generate_image_data(prompt)
+                    if res:
+                        reply = (
+                            f"🎨 **Görsel Başarıyla Oluşturuldu!**\n\n"
+                            f"**Prompt:** {prompt}\n\n"
+                            f"**Kayıt Yolu:** `{res['path']}`\n\n"
+                            f"![{prompt}]({res['b64']})"
+                        )
+                    else:
+                        reply = "❌ Görsel oluşturulamadı. Lütfen tekrar deneyin."
 
                 self.send_response(200)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")

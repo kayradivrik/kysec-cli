@@ -253,6 +253,15 @@ class SecAITestSuite(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(post_prof["profile"], "Guncel Profil Bilgisi")
 
+        # Test /api/images endpoint and core image helpers
+        from secai.core.image import _slugify, get_images_dir, list_generated_images
+
+        self.assertEqual(_slugify("Hacker Cyberpunk Shield 4K!"), "hacker_cyberpunk_shield_4k")
+        self.assertTrue(get_images_dir().exists())
+        status, img_list = req("/api/images")
+        self.assertEqual(status, 200)
+        self.assertIsInstance(img_list, list)
+
         server.shutdown()
         server.server_close()
 

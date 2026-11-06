@@ -91,6 +91,10 @@ console = Console()
 SLASH_COMMANDS = [
     "/infomy",
     "/myinfo",
+    "/image",
+    "/img",
+    "/ciz",
+    "/gorsel",
     "/agent",
     "/agents",
     "/ajan",
@@ -403,6 +407,45 @@ def manage_infomy_interactive(inline_info: str = "") -> None:
         if info.strip():
             set_user_profile(info.strip())
             console.print("\n[bold green][+][/bold green] Kimlik profilin kaydedildi! SecAI artık seni tanıyor.\n")
+
+
+def manage_image_interactive(prompt: str = "") -> None:
+    """Yapay zeka ile görsel üretir ve yerel diskte saklar."""
+    from secai.core.image import generate_image
+    import subprocess
+    import shutil
+
+    if not prompt:
+        prompt = Prompt.ask("\n[bold cyan]🎨 Oluşturulacak Görsel Promptu[/bold cyan]").strip()
+        if not prompt:
+            return
+
+    console.print()
+    with console.status("[bold magenta]🎨 Görsel oluşturuluyor (Stable Diffusion / Horde)...[/bold magenta]", spinner="dots"):
+        img_path = generate_image(prompt)
+
+    if not img_path or not img_path.exists():
+        console.print("[bold red][!] Görsel oluşturulamadı. Lütfen tekrar deneyin.[/bold red]\n")
+        return
+
+    size_kb = max(1, img_path.stat().st_size // 1024)
+    console.print(
+        Panel(
+            f"[bold green]✓ Görsel Başarıyla Üretildi![/bold green]\n\n"
+            f"[bold]Prompt:[/bold] [italic]{prompt}[/italic]\n"
+            f"[bold]Dosya Yolu:[/bold] [cyan]{img_path}[/cyan]\n"
+            f"[bold]Boyut:[/bold] {size_kb} KB\n\n"
+            f"[dim]İpucu: Görseli açmak için sistem görüntüleyicisi tetikleniyor...[/dim]",
+            title="🎨 SecAI Image Studio (/image)",
+            border_style="magenta",
+        )
+    )
+
+    if shutil.which("xdg-open"):
+        try:
+            subprocess.Popen(["xdg-open", str(img_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
 
 
 def manage_skills_interactive(inline_arg: str = "") -> None:
@@ -1130,6 +1173,15 @@ def run_interactive_menu(status_callback=None) -> None:
                 parts = user_input.split(maxsplit=1)
                 arg = parts[1].strip() if len(parts) > 1 else ""
                 manage_infomy_interactive(inline_info=arg)
+                continue
+
+            if (
+                low in ("/image", "/img", "/ciz", "/gorsel", "/görsel", "image", "img", "ciz", "gorsel", "görsel")
+                or low.startswith(("/image ", "/img ", "/ciz ", "/gorsel ", "/görsel ", "image ", "img ", "ciz ", "gorsel ", "görsel "))
+            ):
+                parts = user_input.split(maxsplit=1)
+                arg = parts[1].strip() if len(parts) > 1 else ""
+                manage_image_interactive(prompt=arg)
                 continue
 
             if low in ("/memory", "/bellek", "memory", "bellek"):
