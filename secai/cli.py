@@ -106,6 +106,17 @@ def voice_cmd():
     interactive_voice_loop(session="default")
 
 
+@app.command("web")
+def web_cmd(
+    port: int = typer.Option(8765, "--port", "-p", help="Dinlenecek port (sadece 127.0.0.1)"),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Tarayiciyi otomatik acma"),
+):
+    """Sade React web arayuzunu baslatir (sohbet, defter, guvenlik skoru)."""
+    from secai.web.server import run_web_server
+
+    run_web_server(port=port, open_browser=not no_browser)
+
+
 @app.command("restore")
 def restore(
     backup_file: Optional[Path] = typer.Argument(None, help="Geri yuklenecek .db yedek dosyasi"),

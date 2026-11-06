@@ -18,6 +18,7 @@ secai
 ```
 
 Kısayollar (`secai` içinde):
+- `/web` : Sade React web arayüzünü aç (`127.0.0.1:8765`)
 - `/v` & `/voice` : Bas-konuş ve canlı sesli diyalog (telsiz) modu
 - `/ses` : Ses ayarları (Ahmet/Emel ses seçimi, sesli yanıt aç/kapat)
 - `/api` : Gemini API anahtarı tanımla
@@ -32,6 +33,7 @@ Kısayollar (`secai` içinde):
 
 Doğrudan komutlar:
 ```bash
+secai web          # Sade React web arayüzü
 journalctl -n 30 | secai audit --save "Log Analizi"
 secai status
 secai backup

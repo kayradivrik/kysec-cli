@@ -79,6 +79,7 @@ from secai.core.web import format_web_results
 console = Console()
 
 SLASH_COMMANDS = [
+    "/web",
     "/v",
     "/voice",
     "/talk",
@@ -220,6 +221,7 @@ def show_shortcuts() -> None:
     table.add_column("cmd", style="bold cyan")
     table.add_column("desc", style="white")
 
+    table.add_row("/web", "Sade React Web Arayuzunu baslat (127.0.0.1:8765)")
     table.add_row("/v veya /talk", "Bas-Konus: Mikrofondan sesli emir ver, SecAI sesli ve yazili yanitlasin")
     table.add_row("/voice", "Canli Sesli Diyalog (Telsiz Modu): Karsilikli kesintisiz sesli sohbet")
     table.add_row("/ses veya /tts", "Ses ayarlarini yonet (Ahmet/Emel ses secimi, yazili sohbette ses ac/kapat)")
@@ -1022,6 +1024,12 @@ def run_interactive_menu(status_callback=None) -> None:
                 reply = interactive_push_to_talk(session=session)
                 if reply:
                     last_assistant_reply = reply
+                continue
+
+            if low in ("/web", "web", "gui"):
+                from secai.web.server import run_web_server
+                console.print("\n[bold cyan][*][/bold cyan] Web arayuzu baslatiliyor...")
+                run_web_server(port=8765, open_browser=True)
                 continue
 
             if low in ("/voice", "voice", "telsiz", "sesli mod", "sesli sohbet"):
