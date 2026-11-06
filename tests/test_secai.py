@@ -262,6 +262,22 @@ class SecAITestSuite(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIsInstance(img_list, list)
 
+        # Test session title determination, update, and /api/sessions/rename
+        from secai.core.database import auto_title_session, create_session, determine_chat_title, update_session_title
+
+        self.assertEqual(determine_chat_title("muhabbet kuşum 6 aylık ona dişi alacağım"), "Muhabbet Kuşu & Evcil")
+        self.assertEqual(determine_chat_title("Sistemimdeki açık portları ve servisleri listele"), "Açık Port Analizi")
+        self.assertEqual(determine_chat_title("CIS Linux güvenlik puanını hesapla"), "CIS Güvenlik Skoru")
+
+        test_s_id = "test_rename_sess"
+        create_session(test_s_id, "Yeni Sohbet")
+        self.assertTrue(update_session_title(test_s_id, "Yeni Özel Başlık"))
+        add_chat_message(test_s_id, "user", "iptables ile port engelleme")
+        auto_title_session(test_s_id)
+        status, rename_res = req("/api/sessions/rename", method="POST", data={"id": test_s_id, "title": "Manuel Başlık"})
+        self.assertEqual(status, 200)
+        self.assertEqual(rename_res["title"], "Manuel Başlık")
+
         server.shutdown()
         server.server_close()
 

@@ -545,6 +545,114 @@ def delete_session(session_id: str) -> bool:
         return c.rowcount > 0
 
 
+SESSION_TITLE_PATTERNS = [
+    (r"(?i)(muhabbet\s+ku[sş]|ku[sş]|papa[gğ]an|kedi|k[oö]pek|evcil|veteriner)", "Muhabbet Kuşu & Evcil"),
+    (r"(?i)(a[cç][ıi]k\s+port|port\s+analiz|portlar|dinleyen\s+servis)", "Açık Port Analizi"),
+    (r"(?i)(cis|hardening|s[ıi]k[ıi]la[sş]t[ıi]rma|g[uü]venlik\s+skor)", "CIS Güvenlik Skoru"),
+    (r"(?i)(baseline|sapma|referans|snapshot)", "Sistem Baseline & Sapma"),
+    (r"(?i)(firewall|iptables|ufw|nftables)", "Güvenlik Duvarı (Firewall)"),
+    (r"(?i)(nmap|a[gğ]\s+tara|ke[sş]if|recon)", "Recon & Ağ Taraması"),
+    (r"(?i)(auth|journal|syslog|g[uü]nl[uü]k|systemd\s+log)", "Sistem Log Analizi"),
+    (r"(?i)(brute|fail2ban|hydra|parola\s+sald[ıi]r)", "Brute-Force & Koruma"),
+    (r"(?i)(ctf|privilege|yetki\s+y[uü]kselt|suid|gtfobins)", "CTF & Yetki Yükseltme"),
+    (r"(?i)(socket|soket|tcp|udp|a[gğ]\s+program)", "Soket Programlama"),
+    (r"(?i)(python|script|kodlama|algoritma)", "Python & Kodlama"),
+    (r"(?i)(g[oö]rsel|resim|[cç]iz|image|wallpaper)", "Görsel Üretimi"),
+    (r"(?i)(kimlik|infomy|profil|ben\s+kimim)", "Profil & Kimlik Hafızası"),
+    (r"(?i)(shodan|virustotal|abuseipdb|ioc|tehdit)", "Tehdit İstihbaratı"),
+    (r"(?i)(ssh|anahtar|key|yetkilendirme)", "SSH & Güvenlik"),
+    (r"(?i)(docker|container|podman|k8s)", "Konteyner Güvenliği"),
+    (r"(?i)(vaka|casebook|olay\s+m[uü]dahale)", "Vaka Defteri"),
+]
+
+SESSION_TITLE_STOPS = {
+    "bana", "bir", "bu", "şu", "o", "ve", "ile", "için", "hakkında", "nasıl", "nedir",
+    "ne", "nerede", "kim", "hangi", "sence", "lütfen", "yardım", "et", "eder", "misin",
+    "mısın", "musun", "müsün", "yap", "yapabilir", "misiniz", "istiyorum", "alacağım",
+    "yarın", "bugün", "merhaba", "selam", "hey", "günaydın", "iyi", "akşamlar", "teşekkürler",
+    "sağol", "nasılsın", "naber", "acaba", "şöyle", "böyle", "diye", "gibi", "kadar", "ona",
+    "aylık", "var", "yok", "olur", "mu", "mü", "mı", "mi", "daha", "en", "çok", "az"
+}
+
+
+def determine_chat_title(message: str) -> str:
+    """Kullanıcının mesajını analiz ederek anlamlı ve özgün bir sohbet başlığı belirler."""
+    raw = message.strip()
+    if not raw:
+        return "Yeni Sohbet"
+
+    if raw.startswith(("/image", "/img", "/ciz", "/gorsel", "/görsel")):
+        p = raw.split(maxsplit=1)[1] if " " in raw else ""
+        return f"🎨 {p[:22].strip().title()}" if p else "🎨 Görsel Üretimi"
+    if raw.startswith(("/infomy", "/myinfo", "/kimim")):
+        return "👤 Kimlik Tanımlama"
+    if raw.startswith(("/agent", "/ajan")):
+        p = raw.split(maxsplit=1)[1] if " " in raw else ""
+        return f"🕵️ Ajan: {p.title()}" if p else "🕵️ Ajan Seçimi"
+
+    for pat, label in SESSION_TITLE_PATTERNS:
+        if re.search(pat, raw):
+            return label
+
+    cleaned = re.sub(r"[^\w\s]", " ", raw)
+    words = cleaned.split()
+    meaningful = [w for w in words if w.lower() not in SESSION_TITLE_STOPS and len(w) > 2]
+    if meaningful:
+        title = " ".join(meaningful[:3]).title()
+        if len(title) > 28:
+            title = title[:28].rsplit(" ", 1)[0]
+        return title or "Yeni Sohbet"
+
+    fallback = " ".join(words[:3]).title()
+    return fallback[:28] or "Yeni Sohbet"
+
+
+def update_session_title(session_id: str, title: str) -> bool:
+    """Sohbet oturumunun başlığını günceller."""
+    init_db()
+    clean_title = title.strip() or "Yeni Sohbet"
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_connection() as conn:
+        c = conn.execute(
+            "UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?",
+            (clean_title, now, session_id.strip()),
+        )
+        return c.rowcount > 0
+
+
+def auto_title_session(session_id: str) -> Optional[str]:
+    """Bir oturumun ilk kullanıcı mesajını okuyup başlığı otomatik olarak günceller."""
+    init_db()
+    with get_connection() as conn:
+        first_msg = conn.execute(
+            "SELECT content FROM chat_history WHERE session_id = ? AND role = 'user' ORDER BY id ASC LIMIT 1",
+            (session_id.strip(),),
+        ).fetchone()
+        if not first_msg or not first_msg["content"]:
+            return None
+
+        new_title = determine_chat_title(first_msg["content"])
+        if new_title:
+            update_session_title(session_id, new_title)
+            return new_title
+    return None
+
+
+def autotitle_unnamed_sessions() -> int:
+    """Başlığı henüz 'Yeni Sohbet' olan veya boş kalmış tüm geçmiş sohbetleri otomatik isimlendirir."""
+    init_db()
+    with get_connection() as conn:
+        unnamed = conn.execute(
+            "SELECT id FROM sessions WHERE title = 'Yeni Sohbet' OR title IS NULL OR title = ''"
+        ).fetchall()
+        count = 0
+        for row in unnamed:
+            res = auto_title_session(row["id"])
+            if res and res != "Yeni Sohbet":
+                count += 1
+        return count
+
+
 # ---------- KISISEL PROFIL & BELLEK (ChatGPT Memory Tarzi) ----------
 
 def set_user_profile(info: str) -> bool:

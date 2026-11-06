@@ -38,6 +38,7 @@ from secai.core.database import (
     VALID_CATEGORIES,
     add_chat_message,
     add_note,
+    auto_title_session,
     backup_database,
     clear_chat_history,
     create_session,
@@ -56,6 +57,7 @@ from secai.core.database import (
     save_memory,
     set_user_profile,
     update_note,
+    update_session_title,
 )
 from secai.core.executor import (
     collect_security_checkup,
@@ -91,6 +93,9 @@ console = Console()
 SLASH_COMMANDS = [
     "/infomy",
     "/myinfo",
+    "/rename",
+    "/title",
+    "/baslik",
     "/image",
     "/img",
     "/ciz",
@@ -1154,7 +1159,20 @@ def run_interactive_menu(status_callback=None) -> None:
                 for s_item in s_list:
                     cur_mark = " [bold green][AKTIF][/bold green]" if s_item["id"] == session else ""
                     console.print(f"  • [cyan]{s_item['id']:<14}[/cyan] '{s_item['title']}' ({s_item['msg_count']} mesaj, {s_item['updated_at']}){cur_mark}")
-                console.print("\n[dim]Gecis yapmak icin: /chat <oturum_adi> veya yeni sohbet icin: /new[/dim]\n")
+                console.print("\n[dim]Gecis yapmak icin: /chat <id> | Baslik degistirmek icin: /rename <yeni isim>[/dim]\n")
+                continue
+
+            if (
+                low in ("/rename", "/title", "/baslik", "rename", "title", "baslik")
+                or low.startswith(("/rename ", "/title ", "/baslik ", "rename ", "title ", "baslik "))
+            ):
+                parts = user_input.split(maxsplit=1)
+                new_title = parts[1].strip() if len(parts) > 1 else ""
+                if not new_title:
+                    new_title = Prompt.ask("\n[bold cyan]Yeni Sohbet Başlığı[/bold cyan]").strip()
+                if new_title:
+                    update_session_title(session, new_title)
+                    console.print(f"\n[bold green]✓ Sohbet başlığı güncellendi:[/bold green] [cyan]{new_title}[/cyan]\n")
                 continue
 
             if low.startswith("/chat ") or low.startswith("chat "):
@@ -1320,5 +1338,9 @@ def run_interactive_menu(status_callback=None) -> None:
                 continue
 
             last_assistant_reply = _run_agent_turn(user_input, session=session, force_speak=False)
+            try:
+                auto_title_session(session)
+            except Exception:
+                pass
     finally:
         _save_readline_history(history_file)

@@ -41,6 +41,7 @@ const Icon = {
   Layers: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>`,
   Bot: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"></rect><circle cx="12" cy="5" r="2"></circle><path d="M12 7v4"></path><line x1="8" y1="16" x2="8" y2="16"></line><line x1="16" y1="16" x2="16" y2="16"></line></svg>`,
   Image: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`,
+  Edit: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`,
   Cpu: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg>`,
 };
 
@@ -1222,6 +1223,28 @@ function App() {
   const [skillMenuOpen, setSkillMenuOpen] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [modelsData, setModelsData] = useState(null);
+  const [editingSessionId, setEditingSessionId] = useState(null);
+  const [editingTitle, setEditingTitle] = useState("");
+
+  const handleStartRename = (e, s) => {
+    if (e) e.stopPropagation();
+    setEditingSessionId(s.id);
+    setEditingTitle(s.title);
+  };
+
+  const handleSaveRename = async (e, id) => {
+    if (e) e.stopPropagation();
+    const clean = editingTitle.trim();
+    if (clean) {
+      await api("/api/sessions/rename", {
+        method: "POST",
+        body: JSON.stringify({ id, title: clean }),
+      });
+      const updated = await api("/api/sessions").then((r) => r.json());
+      setSessions(updated);
+    }
+    setEditingSessionId(null);
+  };
 
   const loadStatus = () => {
     api("/api/status").then((r) => r.json()).then((s) => {
@@ -1343,22 +1366,64 @@ function App() {
         <!-- Grouped Chat Sessions (Linear List) -->
         <div class="flex-1 overflow-y-auto px-3 py-2 space-y-0.5 border-t border-zinc-850/80">
           <div class="text-[10px] font-mono uppercase tracking-wider text-zinc-600 px-2 py-1">Geçmiş Sohbetler</div>
-          ${sessions.map((s) => html`
-            <div
-              key=${s.id}
-              onClick=${() => { setActiveSession(s.id); setTab("chat"); }}
-              class="group h-7 px-2.5 rounded text-xs flex items-center justify-between cursor-pointer transition-colors ${activeSession === s.id && tab === 'chat' ? 'bg-zinc-850 text-zinc-100 font-medium' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'}"
-            >
-              <span class="truncate flex-1 pr-1 font-sans">${s.title}</span>
-              ${s.id !== "web" && html`
-                <button
-                  onClick=${(e) => handleDeleteSession(e, s.id)}
-                  class="opacity-0 group-hover:opacity-100 p-0.5 text-zinc-500 hover:text-red-400 rounded transition-opacity"
-                  title="Sil"
-                >
-                  <${Icon.Trash} />
-                </button>`}
-            </div>`)}
+          ${sessions.map((s) => {
+            const isEditing = editingSessionId === s.id;
+            return html`
+              <div
+                key=${s.id}
+                onClick=${() => { if (!isEditing) { setActiveSession(s.id); setTab("chat"); } }}
+                class="group h-7 px-2.5 rounded text-xs flex items-center justify-between cursor-pointer transition-colors ${activeSession === s.id && tab === 'chat' ? 'bg-zinc-850 text-zinc-100 font-medium' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'}"
+              >
+                ${isEditing
+                  ? html`
+                    <div class="flex items-center gap-1 w-full" onClick=${(e) => e.stopPropagation()}>
+                      <input
+                        type="text"
+                        value=${editingTitle}
+                        onInput=${(e) => setEditingTitle(e.target.value)}
+                        onKeyDown=${(e) => {
+                          if (e.key === "Enter") handleSaveRename(e, s.id);
+                          if (e.key === "Escape") setEditingSessionId(null);
+                        }}
+                        autoFocus
+                        class="flex-1 h-5 px-1.5 bg-zinc-950 border border-emerald-500 rounded text-[11px] text-zinc-100 focus:outline-none"
+                      />
+                      <button
+                        onClick=${(e) => handleSaveRename(e, s.id)}
+                        class="p-0.5 text-emerald-400 hover:text-emerald-300"
+                        title="Kaydet"
+                      >
+                        <${Icon.Check} />
+                      </button>
+                    </div>`
+                  : html`
+                    <span
+                      class="truncate flex-1 pr-1 font-sans"
+                      onDoubleClick=${(e) => handleStartRename(e, s)}
+                      title="${s.title} (Çift tıklayarak yeniden adlandır)"
+                    >
+                      ${s.title}
+                    </span>
+                    <div class="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
+                      <button
+                        onClick=${(e) => handleStartRename(e, s)}
+                        class="p-0.5 text-zinc-500 hover:text-zinc-200 rounded transition-colors"
+                        title="Yeniden Adlandır"
+                      >
+                        <${Icon.Edit} />
+                      </button>
+                      ${s.id !== "web" && html`
+                        <button
+                          onClick=${(e) => handleDeleteSession(e, s.id)}
+                          class="p-0.5 text-zinc-500 hover:text-red-400 rounded transition-colors"
+                          title="Sil"
+                        >
+                          <${Icon.Trash} />
+                        </button>`}
+                    </div>`
+                }
+              </div>`;
+          })}
         </div>
 
         <!-- User / Hardware Pill Footer -->
@@ -1380,9 +1445,27 @@ function App() {
               <button onClick=${() => setSidebarOpen(true)} class="p-1 text-zinc-400 hover:text-zinc-200 rounded hover:bg-zinc-800 transition-colors">
                 <${Icon.Sidebar} />
               </button>`}
-            <span class="text-xs font-medium text-zinc-300 font-sans">
-              ${tab === "chat" ? (sessions.find((s) => s.id === activeSession)?.title || "Sohbet") : tab === "agents" ? "SecAI Ajanları" : tab === "intel" ? "Tehdit İstihbaratı" : tab === "baseline" ? "Sistem Baseline & Sapma" : tab === "score" ? "Güvenlik Skoru" : tab === "notes" ? "Vaka Defteri" : "Kalıcı Bellek"}
-            </span>
+            ${tab === "chat" ? html`
+              <div class="flex items-center gap-1.5 group/hdr">
+                <span class="text-xs font-medium text-zinc-200 font-sans">
+                  ${sessions.find((s) => s.id === activeSession)?.title || "Sohbet"}
+                </span>
+                <button
+                  onClick=${(e) => {
+                    const currentSess = sessions.find((s) => s.id === activeSession);
+                    if (currentSess) handleStartRename(e, currentSess);
+                  }}
+                  class="opacity-0 group-hover/hdr:opacity-100 p-0.5 text-zinc-500 hover:text-zinc-200 rounded transition-all"
+                  title="Sohbet Başlığını Değiştir"
+                >
+                  <${Icon.Edit} />
+                </button>
+              </div>
+            ` : html`
+              <span class="text-xs font-medium text-zinc-300 font-sans">
+                ${tab === "agents" ? "SecAI Ajanları" : tab === "intel" ? "Tehdit İstihbaratı" : tab === "baseline" ? "Sistem Baseline & Sapma" : tab === "score" ? "Güvenlik Skoru" : tab === "notes" ? "Vaka Defteri" : "Kalıcı Bellek"}
+              </span>
+            `}
           </div>
 
           <div class="flex items-center gap-2">

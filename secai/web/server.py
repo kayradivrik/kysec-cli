@@ -31,6 +31,8 @@ from secai.core.baseline import (
 from secai.core.database import (
     add_chat_message,
     add_note,
+    auto_title_session,
+    autotitle_unnamed_sessions,
     clear_chat_history,
     create_session,
     delete_memory,
@@ -43,6 +45,7 @@ from secai.core.database import (
     list_sessions,
     save_memory,
     set_user_profile,
+    update_session_title,
 )
 from secai.core.executor import (
     collect_security_checkup,
@@ -182,6 +185,10 @@ def make_handler(token: str):
                 return self._send_json(diff)
 
             if path == "/api/sessions":
+                try:
+                    autotitle_unnamed_sessions()
+                except Exception:
+                    pass
                 s_list = list_sessions()
                 if not s_list:
                     create_session(WEB_SESSION, "Genel Sohbet")
@@ -250,6 +257,23 @@ def make_handler(token: str):
                 if s_id:
                     delete_session(s_id)
                 return self._send_json({"ok": True})
+
+            if path in ("/api/sessions/rename", "/api/session/rename"):
+                data = self._read_json()
+                s_id = data.get("id") or data.get("session_id", "")
+                title = data.get("title", "").strip()
+                if not s_id or not title:
+                    return self._send_json({"error": "id ve title zorunludur"}, 400)
+                ok = update_session_title(s_id, title)
+                return self._send_json({"ok": ok, "id": s_id, "title": title})
+
+            if path == "/api/sessions/autotitle":
+                data = self._read_json()
+                s_id = data.get("id") or data.get("session_id", "")
+                if not s_id:
+                    return self._send_json({"error": "id zorunludur"}, 400)
+                new_title = auto_title_session(s_id)
+                return self._send_json({"ok": bool(new_title), "id": s_id, "title": new_title})
 
             if path.startswith("/api/memories/delete"):
                 data = self._read_json()
@@ -363,6 +387,10 @@ def make_handler(token: str):
 
         def _stream_chat(self, message: str, session_id: str) -> None:
             add_chat_message(session_id=session_id, role="user", content=message)
+            try:
+                auto_title_session(session_id)
+            except Exception:
+                pass
 
             # Slash komutlarini aninda karsila (Ajan / Beceri / Model)
             raw_cmd = message.strip()
