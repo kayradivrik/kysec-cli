@@ -47,6 +47,7 @@ Kısayollar (`secai` içinde):
 - `/agent` : SecOps ajanlarını listele veya değiştir (`/agent recon`, `/agent ctf`, `/agent hardening`)
 - `/v` & `/voice` : Bas-konuş ve canlı sesli diyalog modu
 - `/ses` : Ses profili ve okuma ayarları
+- `/infomy <bilgi>` : Kendini tanıt, SecAI kim olduğunu ve hedeflerini unutmasın
 - `/models` : Model değiştir (Ollama `gemma3:4b`, `qwen2.5-coder:7b` / Gemini)
 - `/intel <ip>` : Shodan InternetDB açık port ve CVE sorgusu
 - `/baseline` & `/diff` : Sistem snapshot'ı ve sapma analizi

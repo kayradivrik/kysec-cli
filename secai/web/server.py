@@ -37,10 +37,12 @@ from secai.core.database import (
     delete_session,
     get_chat_history,
     get_note,
+    get_user_profile,
     list_memories,
     list_notes,
     list_sessions,
     save_memory,
+    set_user_profile,
 )
 from secai.core.executor import (
     collect_security_checkup,
@@ -192,6 +194,9 @@ def make_handler(token: str):
             if path == "/api/memories":
                 return self._send_json(list_memories())
 
+            if path == "/api/profile":
+                return self._send_json({"profile": get_user_profile() or ""})
+
             if path == "/api/notes":
                 rows = list_notes()
                 return self._send_json(
@@ -248,6 +253,13 @@ def make_handler(token: str):
                 if key:
                     delete_memory(key)
                 return self._send_json({"ok": True})
+
+            if path == "/api/profile":
+                data = self._read_json()
+                info = data.get("profile", "").strip()
+                if info:
+                    set_user_profile(info)
+                return self._send_json({"ok": True, "profile": get_user_profile() or ""})
 
             if path == "/api/intel":
                 data = self._read_json()
@@ -375,6 +387,39 @@ def make_handler(token: str):
                         "\n_İpucu: Sağ üstteki **'Ajan'** butonundan veya sol menüdeki **'Ajanlar'** sekmesinden tek tıkla değiştirebilirsiniz._"
                     )
                     reply = "\n".join(lines)
+
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(reply.encode("utf-8"))
+                add_chat_message(session_id=session_id, role="assistant", content=reply)
+                return
+
+            if raw_cmd.startswith(("/infomy", "/myinfo", "/kimim")):
+                parts = raw_cmd.split(maxsplit=1)
+                info = parts[1].strip() if len(parts) > 1 else ""
+                if info:
+                    set_user_profile(info)
+                    reply = (
+                        f"👤 **SecAI Kimlik Hafızası Güncellendi (/infomy):**\n\n"
+                        f"> {info}\n\n"
+                        f"Artık tüm sohbetlerde ve oturumlarda bu profil bilgine göre sana hitap edeceğim ve tercihlerini daima hatırlayacağım!"
+                    )
+                else:
+                    existing = get_user_profile()
+                    if existing:
+                        reply = (
+                            f"👤 **SecAI Tarafından Tanınan Kimlik Bilginiz (/infomy):**\n\n"
+                            f"> {existing}\n\n"
+                            f"_Profilinizi güncellemek için: `/infomy <yeni bilgileriniz>` yazabilirsiniz._"
+                        )
+                    else:
+                        reply = (
+                            f"👤 **Henüz Bir Kimlik Profili Tanımlanmamış:**\n\n"
+                            f"SecAI'ın sizi tam olarak tanıması için kendinizle ilgili bilgileri şu komutla yazabilirsiniz:\n"
+                            f"```text\n/infomy Adım Kayra, siber güvenlik araştırmacısıyım. Arch Linux ve Python kullanıyorum.\n```"
+                        )
 
                 self.send_response(200)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")

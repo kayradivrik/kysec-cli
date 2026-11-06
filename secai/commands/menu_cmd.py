@@ -47,12 +47,14 @@ from secai.core.database import (
     export_note_markdown,
     get_chat_history,
     get_note,
+    get_user_profile,
     list_backups,
     list_memories,
     list_notes,
     list_sessions,
     restore_database,
     save_memory,
+    set_user_profile,
     update_note,
 )
 from secai.core.executor import (
@@ -87,6 +89,8 @@ from secai.core.web import format_web_results
 console = Console()
 
 SLASH_COMMANDS = [
+    "/infomy",
+    "/myinfo",
     "/agent",
     "/agents",
     "/ajan",
@@ -353,6 +357,52 @@ def switch_model_interactive() -> None:
         save_settings({"provider": "ollama", "ollama_model": picked_local})
         render_top_banner()
         console.print(f"[bold green][+][/bold green] Aktif model: [cyan]{picked_local} (Local Ollama)[/cyan]\n")
+
+
+def manage_infomy_interactive(inline_info: str = "") -> None:
+    """Kullanicinin kim oldugunu, profilini ve ozel tercihlerini kaydeder veya gosterir."""
+    if inline_info:
+        set_user_profile(inline_info)
+        console.print(
+            Panel(
+                f"[bold green]✓ Profil Bilgin Başarıyla Kaydedildi![/bold green]\n\n"
+                f"[cyan]{inline_info}[/cyan]\n\n"
+                f"[dim]SecAI artık tüm sohbetlerde ve komutlarda senin kim olduğunu, hedeflerini ve tercihlerini tam olarak hatırlayacak.[/dim]",
+                title="👤 SecAI Kimlik Hafızası (/infomy)",
+                border_style="green",
+            )
+        )
+        return
+
+    existing = get_user_profile()
+    if existing:
+        console.print(
+            Panel(
+                f"[bold cyan]Kayıtlı Kimlik Profilin:[/bold cyan]\n\n"
+                f"[white]{existing}[/white]\n\n"
+                f"[dim]Profilini güncellemek için yeni bilgiyi yazabilir ya da aynı bırakmak için boş geçebilirsiniz.[/dim]",
+                title="👤 SecAI Kimlik Hafızası (/infomy)",
+                border_style="cyan",
+            )
+        )
+        new_info = Prompt.ask("\n[bold cyan]Yeni profil bilgin[/bold cyan] (değiştirmemek için Enter)", default="")
+        if new_info.strip():
+            set_user_profile(new_info.strip())
+            console.print("\n[bold green][+][/bold green] Kimlik profilin güncellendi!\n")
+    else:
+        console.print(
+            Panel(
+                "[bold cyan]SecAI seni tanısın![/bold cyan]\n\n"
+                "Kendinle ilgili dilediğin bilgileri gir (adın, rolün, uzmanlık alanın, kullandığın teknolojiler, hedeflerin).\n\n"
+                "[dim]Örnek: 'Adım Kayra, siber güvenlik ve ağ analizi araştırmacısıyım. Arch Linux ve Python kullanıyorum. Hedefim OSCP sertifikası almak.'[/dim]",
+                title="👤 SecAI Kimlik Tanımlama (/infomy)",
+                border_style="cyan",
+            )
+        )
+        info = Prompt.ask("[bold cyan]Profil Bilgin[/bold cyan]")
+        if info.strip():
+            set_user_profile(info.strip())
+            console.print("\n[bold green][+][/bold green] Kimlik profilin kaydedildi! SecAI artık seni tanıyor.\n")
 
 
 def manage_skills_interactive(inline_arg: str = "") -> None:
@@ -1071,6 +1121,15 @@ def run_interactive_menu(status_callback=None) -> None:
                     create_session(session, target_sess)
                     render_top_banner()
                     console.print(f"[bold green][+][/bold green] Oturuma gecildi: [cyan]{session}[/cyan]\n")
+                continue
+
+            if (
+                low in ("/infomy", "/myinfo", "infomy", "myinfo", "/kimim", "kimim")
+                or low.startswith(("/infomy ", "/myinfo ", "infomy ", "myinfo ", "/kimim ", "kimim "))
+            ):
+                parts = user_input.split(maxsplit=1)
+                arg = parts[1].strip() if len(parts) > 1 else ""
+                manage_infomy_interactive(inline_info=arg)
                 continue
 
             if low in ("/memory", "/bellek", "memory", "bellek"):

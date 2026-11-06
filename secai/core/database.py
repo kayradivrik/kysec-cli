@@ -547,6 +547,19 @@ def delete_session(session_id: str) -> bool:
 
 # ---------- KISISEL PROFIL & BELLEK (ChatGPT Memory Tarzi) ----------
 
+def set_user_profile(info: str) -> bool:
+    """Kullanicinin kim oldugunu, tercihlerini ve tanitimini kalici hafizaya yazar."""
+    return save_memory(key="kullanici_kimlik", fact=info.strip(), source="user_profile")
+
+
+def get_user_profile() -> Optional[str]:
+    """Kullanicinin kaydedilmis ozel kimlik ve profil bilgisini dondurur."""
+    init_db()
+    with get_connection() as conn:
+        row = conn.execute("SELECT fact FROM memories WHERE key = 'kullanici_kimlik'").fetchone()
+        return row["fact"] if row else None
+
+
 def save_memory(key: str, fact: str, source: str = "auto") -> bool:
     init_db()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -586,6 +599,9 @@ def get_memory_context() -> str:
         return ""
     lines = ["[KULLANICI PROFILI VE HATIRLANAN BILGILER (KALICI BELLEK)]:"]
     for m in mems:
-        lines.append(f"  • {m['fact']} (anahtar: {m['key']})")
+        if m["key"] == "kullanici_kimlik":
+            lines.insert(1, f"  ★ KULLANICI KİMLİK TANIMI (/infomy): {m['fact']}")
+        else:
+            lines.append(f"  • {m['fact']} (anahtar: {m['key']})")
     lines.append("Bu bilgileri dogal olarak hatirla ve kullanicinin kimligine/tercihlerine uygun cevap ver.")
     return "\n".join(lines)

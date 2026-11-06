@@ -237,6 +237,22 @@ class SecAITestSuite(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("score", score)
 
+        # Test /api/profile endpoint and user profile memory
+        from secai.core.database import get_memory_context, get_user_profile, set_user_profile
+
+        set_user_profile("Ben Kayra, siber guvenlik uzmani.")
+        self.assertEqual(get_user_profile(), "Ben Kayra, siber guvenlik uzmani.")
+        mem_ctx = get_memory_context()
+        self.assertIn("Kayra", mem_ctx)
+
+        status, prof_res = req("/api/profile")
+        self.assertEqual(status, 200)
+        self.assertEqual(prof_res["profile"], "Ben Kayra, siber guvenlik uzmani.")
+
+        status, post_prof = req("/api/profile", method="POST", data={"profile": "Guncel Profil Bilgisi"})
+        self.assertEqual(status, 200)
+        self.assertEqual(post_prof["profile"], "Guncel Profil Bilgisi")
+
         server.shutdown()
         server.server_close()
 

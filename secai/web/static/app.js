@@ -407,6 +407,7 @@ function ChatView({ activeSession, setActiveSession, sessions, setSessions, acti
   };
 
   const emptyPrompts = [
+    { label: "Beni Tanı & Kimlik Yaz (/infomy)", cmd: "/infomy" },
     { label: "SecOps Ajanını Değiştir (/agent)", cmd: "/agent" },
     { label: "Açık TCP/UDP portlarını denetle", cmd: "Sistemimdeki açık portları ve dinleyen servisleri analiz et" },
     { label: "CIS Linux güvenlik puanını hesapla", cmd: "Sistem güvenlik (CIS hardening) skorumu çıkar" },
@@ -825,8 +826,32 @@ function BaselineView({ onSendToChat }) {
 // --- Memory & Profile Workspace ---
 function MemoryView() {
   const [memories, setMemories] = useState([]);
-  const load = () => api("/api/memories").then((r) => r.json()).then(setMemories);
+  const [profile, setProfile] = useState("");
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [profileInput, setProfileInput] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = () => {
+    api("/api/memories").then((r) => r.json()).then(setMemories);
+    api("/api/profile").then((r) => r.json()).then((d) => {
+      setProfile(d.profile || "");
+      setProfileInput(d.profile || "");
+    });
+  };
+
   useEffect(() => { load(); }, []);
+
+  const saveProfile = async () => {
+    if (!profileInput.trim()) return;
+    setSaving(true);
+    await api("/api/profile", {
+      method: "POST",
+      body: JSON.stringify({ profile: profileInput.trim() }),
+    });
+    setSaving(false);
+    setEditingProfile(false);
+    load();
+  };
 
   const del = async (key) => {
     await api("/api/memories/delete", { method: "POST", body: JSON.stringify({ key }) });
@@ -837,24 +862,82 @@ function MemoryView() {
     <div class="flex-1 overflow-y-auto p-6 md:p-8 bg-[#09090b]">
       <div class="max-w-3xl mx-auto space-y-6">
         <div class="border-b border-zinc-800 pb-4">
-          <h2 class="text-base font-semibold text-zinc-100">Kalıcı Bellek & Profil Bilgileri</h2>
-          <p class="text-xs text-zinc-500 mt-1">Sohbetler arasında bağlam sağlayan ChatGPT Memory benzeri doğrulanmış bilgiler.</p>
+          <div class="flex items-center gap-2">
+            <${Icon.Brain} />
+            <h2 class="text-base font-semibold text-zinc-100">Kalıcı Bellek & Profil Bilgileri (/infomy)</h2>
+          </div>
+          <p class="text-xs text-zinc-500 mt-1">Sohbetler arasında bağlam sağlayan, AI'ın sizin kim olduğunuzu daima hatırlamasını sağlayan kimlik hafızası.</p>
         </div>
 
-        ${memories.length === 0 && html`<div class="py-12 text-center text-xs text-zinc-600">Henüz hafızaya alınmış bir profil detayı bulunmuyor.</div>`}
-
-        <div class="divide-y divide-zinc-850 border border-zinc-800 rounded-lg bg-zinc-900/40 overflow-hidden">
-          ${memories.map((m) => html`
-            <div key=${m.id} class="p-3.5 flex items-center justify-between hover:bg-zinc-850/40 transition-colors text-xs">
-              <div>
-                <span class="font-mono text-zinc-400 bg-zinc-800/80 px-2 py-0.5 rounded border border-zinc-700/60 text-[11px]">${m.key}</span>
-                <p class="text-zinc-200 mt-1 font-medium">${m.fact}</p>
-                <span class="text-[10px] text-zinc-600">${m.created_at}</span>
-              </div>
-              <button onClick=${() => del(m.key)} class="text-zinc-500 hover:text-red-400 p-1.5 rounded transition-colors" title="Bellekten Kaldır">
-                <${Icon.Trash} />
+        <!-- /infomy User Identity Card -->
+        <div class="rounded-xl border border-emerald-900/60 bg-emerald-950/15 p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="text-base">👤</span>
+              <span class="text-xs font-mono uppercase tracking-wider text-emerald-400 font-semibold">Kullanıcı Kimlik Tanımı (/infomy)</span>
+            </div>
+            ${!editingProfile && html`
+              <button
+                onClick=${() => setEditingProfile(true)}
+                class="text-xs px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-zinc-300 font-medium transition-colors"
+              >
+                ${profile ? "Düzenle" : "+ Bilgi Ekle"}
               </button>
-            </div>`)}
+            `}
+          </div>
+
+          ${editingProfile
+            ? html`
+              <div class="space-y-2.5 pt-1">
+                <textarea
+                  rows="3"
+                  value=${profileInput}
+                  onInput=${(e) => setProfileInput(e.target.value)}
+                  placeholder="Kendinizi tanıtın (örn: 'Adım Kayra, siber güvenlik araştırmacısıyım, Arch Linux ve Python kullanıyorum, hedefim OSCP almak')..."
+                  class="w-full bg-zinc-900 border border-zinc-700 rounded-lg p-3 text-xs text-zinc-100 outline-none focus:border-emerald-500 transition-colors font-sans leading-relaxed resize-none"
+                />
+                <div class="flex items-center justify-end gap-2">
+                  <button
+                    onClick=${() => { setEditingProfile(false); setProfileInput(profile); }}
+                    class="px-3 py-1.5 rounded text-xs text-zinc-400 hover:text-zinc-200"
+                  >
+                    İptal
+                  </button>
+                  <button
+                    onClick=${saveProfile}
+                    disabled=${saving || !profileInput.trim()}
+                    class="px-3.5 py-1.5 rounded bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-medium text-xs transition-colors"
+                  >
+                    ${saving ? "Kaydediliyor..." : "Kaydet"}
+                  </button>
+                </div>
+              </div>`
+            : html`
+              <div class="text-xs text-zinc-300 leading-relaxed font-sans pt-0.5">
+                ${profile
+                  ? html`<p class="bg-zinc-900/60 border border-zinc-850 p-3 rounded-lg text-zinc-200">${profile}</p>`
+                  : html`<span class="text-zinc-500 italic">Henüz bir profil tanımlanmadı. Chat'e <code>/infomy Adım...</code> yazarak veya buradan ekleyebilirsiniz.</span>`}
+              </div>`
+          }
+        </div>
+
+        <div class="border-t border-zinc-850 pt-2">
+          <span class="text-xs font-mono uppercase tracking-wider text-zinc-500 block mb-3">Otomatik Öğrenilen Diğer Bellek Detayları</span>
+          ${memories.length === 0 && html`<div class="py-6 text-center text-xs text-zinc-600">Henüz hafızaya alınmış ek bir detay bulunmuyor.</div>`}
+
+          <div class="divide-y divide-zinc-850 border border-zinc-800 rounded-lg bg-zinc-900/40 overflow-hidden">
+            ${memories.map((m) => html`
+              <div key=${m.id} class="p-3.5 flex items-center justify-between hover:bg-zinc-850/40 transition-colors text-xs">
+                <div>
+                  <span class="font-mono text-zinc-400 bg-zinc-800/80 px-2 py-0.5 rounded border border-zinc-700/60 text-[11px]">${m.key}</span>
+                  <p class="text-zinc-200 mt-1 font-medium">${m.fact}</p>
+                  <span class="text-[10px] text-zinc-600">${m.created_at}</span>
+                </div>
+                <button onClick=${() => del(m.key)} class="text-zinc-500 hover:text-red-400 p-1.5 rounded transition-colors" title="Bellekten Kaldır">
+                  <${Icon.Trash} />
+                </button>
+              </div>`)}
+          </div>
         </div>
       </div>
     </div>`;
