@@ -1,0 +1,29 @@
+# Python derleme ve paket kalıntıları
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.installed.cfg
+*.egg
+build/
+dist/
+
+# Sanal ortamlar
+.venv/
+venv/
+ENV/
+env/
+
+# Gizli anahtarlar ve yerel veritabanları
+.env
+*.db
+*.sqlite3
+settings.json
+command_history
+
+# IDE ve işletim sistemi dosyaları
+.vscode/
+.idea/
+.DS_Store
+yapilacaklar.txt
+
