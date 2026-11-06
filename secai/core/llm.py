@@ -91,6 +91,43 @@ score
 """
 
 
+def get_runtime_context() -> str:
+    """Modelin tarih/sistem bilgisini uydurmamasi icin gercek calisma zamani bilgisini uretir."""
+    import getpass
+    import platform
+    import socket
+    from datetime import datetime
+
+    aylar = (
+        "Ocak", "Subat", "Mart", "Nisan", "Mayis", "Haziran",
+        "Temmuz", "Agustos", "Eylul", "Ekim", "Kasim", "Aralik",
+    )
+    now = datetime.now()
+    tarih = f"{now.day} {aylar[now.month - 1]} {now.year}, {now.strftime('%H:%M')}"
+
+    distro = platform.system()
+    try:
+        for line in open("/etc/os-release", encoding="utf-8"):
+            if line.startswith("PRETTY_NAME="):
+                distro = line.split("=", 1)[1].strip().strip('"')
+                break
+    except Exception:
+        pass
+
+    try:
+        user_host = f"{getpass.getuser()}@{socket.gethostname()}"
+    except Exception:
+        user_host = "bilinmiyor"
+
+    return (
+        "[GERCEK CALISMA ZAMANI BILGISI]:\n"
+        f"- Bugunun tarihi ve saati: {tarih}\n"
+        f"- Sistem: {distro} (cekirdek {platform.release()}), kullanici/host: {user_host}\n"
+        "- Rapora veya yanita tarih ya da sistem adi yazacaksan SADECE bu bilgileri kullan; "
+        "asla tahmini/uydurma bir tarih veya 'Belirtilmemis' yazma."
+    )
+
+
 class OllamaConnectionError(Exception):
     pass
 
@@ -254,6 +291,7 @@ def stream_generate(
         if active_skill
         else system_prompt
     )
+    effective_system = f"{effective_system}\n\n{get_runtime_context()}"
 
     if llm_info["provider"] == "gemini" and llm_info["api_key"]:
         contents = [{"role": "user", "parts": [{"text": prompt}]}]
@@ -317,7 +355,9 @@ def stream_chat(
     casebook_ctx = get_casebook_context(user_query=latest_user_query, limit=10)
     active_skill = get_active_skill()
     skill_block = f"\n\n{active_skill['instructions']}" if active_skill else ""
-    enriched_system_prompt = f"{system_prompt}{skill_block}\n\n{casebook_ctx}"
+    enriched_system_prompt = (
+        f"{system_prompt}{skill_block}\n\n{get_runtime_context()}\n\n{casebook_ctx}"
+    )
 
     if llm_info["provider"] == "gemini" and llm_info["api_key"]:
         gemini_contents = []

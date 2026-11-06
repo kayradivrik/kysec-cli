@@ -285,3 +285,4 @@ def transcribe_voice(wav_path: Path) -> str:
     except Exception as exc:
         console.print(f"[bold red][-][/bold red] Ses cozumleme hatasi: {exc}")
         return ""
+
