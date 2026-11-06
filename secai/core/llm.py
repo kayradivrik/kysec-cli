@@ -71,6 +71,23 @@ id: 3
 ```web-search
 sorgu: aranacak anahtar kelimeler
 ```
+8. OTOMATIK TEHDIT ISTIHBARATI (SHODAN INTERNETDB) & SECOPS MOTORLARI:
+   - Kullanici bir veya birden fazla dis (public) IPv4 adresini sorgulamak, arastirmak veya tehdit istihbarati almak isterse ("bu IP'ye bak: 185.220.101.45", "su IP'leri Shodan'da sorgula"), yanitinda su blogu ver:
+```intel-lookup
+185.220.101.45
+```
+   - Kullanici sistemin temiz referans kaydini (baseline) almak isterse ("baseline al", "sistemin su anki goruntusunu kaydet"):
+```secops-action
+baseline
+```
+   - Kullanici sistemde son baseline'dan beri degisiklik/anomali (yeni acilan arka kapi portu, yeni servis, degisen `/etc/passwd` veya `/etc/hosts`) olup olmadigini kontrol etmek isterse ("sistemde degisiklik var mi", "baseline ile karsilastir", "anomali kontrolu yap"):
+```secops-action
+diff
+```
+   - Kullanici bilgisayarinin guvenlik sikilastirma puanini (0-100 CIS Hardening Score) hesaplamak isterse ("guvenlik puanimi hesapla", "sistemim ne kadar guvenli puanla", "hardening skoru cikar"):
+```secops-action
+score
+```
 """
 
 

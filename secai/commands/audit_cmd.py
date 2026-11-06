@@ -9,6 +9,7 @@ from rich.padding import Padding
 
 from secai.config import DEFAULT_MODEL
 from secai.core.database import add_note
+from secai.core.intel import extract_iocs, format_intel_report
 from secai.core.llm import OllamaConnectionError, stream_generate
 
 console = Console()
@@ -50,7 +51,19 @@ def audit_command(
         custom_prompt
         or "Asagidaki log, komut ciktisi veya kod blogunu guvenlik acisindan analiz et:"
     )
-    full_prompt = f"{instruction}\n\n```\n{raw_input.strip()}\n```"
+
+    iocs = extract_iocs(raw_input)
+    intel_block = ""
+    if iocs["ips"] or iocs["cves"] or iocs["sha256"]:
+        console.print(
+            f"[bold cyan][*][/bold cyan] IOC tespit edildi ({len(iocs['ips'])} dis IP, {len(iocs['cves'])} CVE) — Shodan InternetDB sorgulaniyor..."
+        )
+        intel_md = format_intel_report(raw_input, max_ips=6)
+        console.print(Padding(Markdown(intel_md, code_theme="monokai"), (0, 1)))
+        console.print()
+        intel_block = f"\n\n[OTOMATIK SHODAN & IOC TEHDIT ISTIHBARATI]:\n{intel_md}"
+
+    full_prompt = f"{instruction}\n\n```\n{raw_input.strip()}\n```{intel_block}"
 
     console.print(
         f"[bold cyan][*][/bold cyan] kaynak: {source_label} | model: {model} | satir: {len(raw_input.splitlines())}\n"

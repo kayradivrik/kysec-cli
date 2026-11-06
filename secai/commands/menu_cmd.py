@@ -27,6 +27,13 @@ from secai.config import (
     load_settings,
     save_settings,
 )
+from secai.core.baseline import (
+    calculate_hardening_score,
+    compare_with_baseline,
+    format_baseline_diff_report,
+    format_hardening_report,
+    save_baseline,
+)
 from secai.core.database import (
     VALID_CATEGORIES,
     add_chat_message,
@@ -44,13 +51,16 @@ from secai.core.database import (
 from secai.core.executor import (
     collect_security_checkup,
     expand_file_references,
+    extract_intel_queries,
     extract_note_actions,
     extract_saved_notes,
+    extract_secops_actions,
     extract_shell_commands,
     extract_web_searches,
     prompt_and_execute,
     strip_internal_blocks,
 )
+from secai.core.intel import extract_iocs, format_intel_report
 from secai.core.llm import OllamaConnectionError, check_ollama, stream_chat, stream_generate
 from secai.core.skills import (
     create_custom_skill,
@@ -68,6 +78,11 @@ SLASH_COMMANDS = [
     "/models",
     "/skills",
     "/skill",
+    "/intel",
+    "/baseline",
+    "/diff",
+    "/score",
+    "/harden",
     "/notes",
     "/add",
     "/edit",
@@ -193,8 +208,12 @@ def show_shortcuts() -> None:
     table.add_column("desc", style="white")
 
     table.add_row("/api", "Gemini API Token ekle veya degistir (veya dogrudan AIza... yapistir)")
-    table.add_row("/model", "Aktif modeli degistir (Gemini 2.5 Flash / Pro / Yerel Ollama)")
+    table.add_row("/model", "Aktif modeli degistir (Gemini 3 Flash / Pro / Yerel Ollama)")
     table.add_row("/skills", "SecOps yeteneklerini (recon, hardening, detection, ctf) sec veya yeni skill ekle")
+    table.add_row("/intel <ip/log>", "Shodan InternetDB & GeoIP ile IP/CVE/Hash tehdit istihbarati sorgula")
+    table.add_row("/baseline", "Sistemin temiz referans goruntusunu (portlar, servisler, SHA256) al")
+    table.add_row("/diff", "Mevcut sistemi son baseline ile karsilastir (arka kapi / degisim tespiti)")
+    table.add_row("/score", "Deterministik CIS Linux Guvenlik & Sikilastirma Puanini (0-100) hesapla")
     table.add_row("/check", "Bilgisayarin anlik guvenlik taramasini yap ve AI ile analiz et")
     table.add_row("/report", "Mevcut oturumdaki bulgulardan resmi Siber Guvenlik Raporu (.md) uret")
     table.add_row("@dosya", "Sohbet icinde herhangi bir dosyayi okutmak icin basina @ koyun (orn: @/etc/hosts)")
@@ -202,7 +221,7 @@ def show_shortcuts() -> None:
     table.add_row("/add", "Deftere yeni vaka, bulgu veya kisisel proje ekle")
     table.add_row("/edit", "Mevcut bir notun/projenin uzerine ekleme yap veya duzenle")
     table.add_row("/save <baslik>", "Son AI yanitini Vaka Defterine kaydet")
-    table.add_row("/audit <dosya>", "Bir log veya kaynak kod dosyasini analiz et")
+    table.add_row("/audit <dosya>", "Bir log veya kaynak kod dosyasini (otomatik Shodan IOC ile) analiz et")
     table.add_row("/backup", "Veritabaninin yedegini al")
     table.add_row("/restore", "Kayitli bir yedekten veritabanini geri yukle")
     table.add_row("/clear", "Ekrani ve sohbet hafizasini temizle")
@@ -506,6 +525,81 @@ def interactive_security_checkup(require_confirm: bool = True) -> None:
         console.print(f"[bold green][+][/bold green] Kaydedildi (#{note_id})\n")
 
 
+def interactive_intel(inline_target: str = "") -> None:
+    target = inline_target.strip()
+    if not target:
+        target = Prompt.ask("\nSorgulanacak dis IP adresi, log metni veya dosya yolu").strip()
+    if not target:
+        return
+
+    potential_file = Path(target).expanduser()
+    if potential_file.exists() and potential_file.is_file():
+        raw_text = potential_file.read_text(encoding="utf-8", errors="replace")
+    else:
+        raw_text = target
+
+    console.print("\n[bold cyan][*][/bold cyan] Shodan InternetDB & GeoIP tehdit istihbarati sorgulaniyor...")
+    report_md = format_intel_report(raw_text, max_ips=10)
+    console.print()
+    console.print(Padding(Markdown(report_md, code_theme="monokai"), (0, 1)))
+    console.print()
+
+
+def interactive_baseline(label: str = "default") -> None:
+    clean_label = label.strip() or "default"
+    console.print(f"\n[bold cyan][*][/bold cyan] Sistem referans goruntusu (baseline: '{clean_label}') aliniyor...")
+    record = save_baseline(label=clean_label)
+    snap = record["snapshot"]
+    console.print(
+        f"[bold green][+][/bold green] Baseline #{record['id']} kaydedildi ({record['created_at']})\n"
+        f"    Dinlenen Port: [cyan]{len(snap['ports'])}[/cyan] | "
+        f"Aktif Servis: [cyan]{len(snap['services'])}[/cyan] | "
+        f"SHA256 Dosya: [cyan]{len(snap['file_hashes'])}[/cyan]\n"
+    )
+
+
+def interactive_diff(analyze_with_ai: bool = False) -> None:
+    console.print("\n[bold cyan][*][/bold cyan] Mevcut sistem durumu son baseline ile karsilastiriliyor...")
+    diff = compare_with_baseline()
+    report_md = format_baseline_diff_report(diff)
+    console.print()
+    console.print(Padding(Markdown(report_md, code_theme="monokai"), (0, 1)))
+    console.print()
+
+    if analyze_with_ai and diff.get("has_baseline") and diff.get("has_drift"):
+        prompt = (
+            "Asagida sistemin temiz baseline kaydi ile su anki durumu arasindaki farklar (drift/anomali) yer almaktadir.\n"
+            "Yeni acilan portlari, servisleri veya degisen dosyalari guvenlik acisindan degerlendir:\n\n"
+            f"{report_md}"
+        )
+        try:
+            gen = stream_generate(prompt=prompt)
+            _stream_markdown_from_generator(gen)
+        except OllamaConnectionError as err:
+            console.print(f"\n[bold red][-][/bold red] {err}\n")
+
+
+def interactive_hardening_score(analyze_with_ai: bool = False) -> None:
+    console.print("\n[bold cyan][*][/bold cyan] Deterministik CIS Linux Guvenlik & Sikilastirma denetimi yapiliyor...")
+    res = calculate_hardening_score()
+    report_md = format_hardening_report(res)
+    console.print()
+    console.print(Padding(Markdown(report_md, code_theme="monokai"), (0, 1)))
+    console.print()
+
+    if analyze_with_ai:
+        prompt = (
+            "Asagida kullanicinin sisteminden alinan deterministik CIS Guvenlik ve Sikilastirma (Hardening) tablosu yer almaktadir.\n"
+            "Basarisiz (FAIL/WARN) olan maddeleri nasil kapatabilecegini kisa ve uygulanabilir komutlarla acikla:\n\n"
+            f"{report_md}"
+        )
+        try:
+            gen = stream_generate(prompt=prompt)
+            _stream_markdown_from_generator(gen)
+        except OllamaConnectionError as err:
+            console.print(f"\n[bold red][-][/bold red] {err}\n")
+
+
 def interactive_audit(inline_target: str = "") -> None:
     source = inline_target.strip()
     if not source:
@@ -524,9 +618,20 @@ def interactive_audit(inline_target: str = "") -> None:
     llm_info = get_active_llm_info()
     console.print(f"\n[bold cyan][*][/bold cyan] kaynak: {label} | model: {llm_info['model']}")
 
+    iocs = extract_iocs(raw_input)
+    intel_block = ""
+    if iocs["ips"] or iocs["cves"] or iocs["sha256"]:
+        console.print(
+            f"[bold cyan][*][/bold cyan] IOC tespit edildi ({len(iocs['ips'])} dis IP, {len(iocs['cves'])} CVE) — Shodan InternetDB sorgulaniyor..."
+        )
+        intel_md = format_intel_report(raw_input, max_ips=6)
+        console.print()
+        console.print(Padding(Markdown(intel_md, code_theme="monokai"), (0, 1)))
+        intel_block = f"\n\n[OTOMATIK SHODAN & IOC TEHDIT ISTIHBARATI]:\n{intel_md}"
+
     prompt = (
         "Asagidaki log, komut ciktisi veya kod blogunu guvenlik acisindan analiz et:\n\n"
-        f"```\n{raw_input}\n```"
+        f"```\n{raw_input}\n```{intel_block}"
     )
     try:
         gen = stream_generate(prompt=prompt)
@@ -649,6 +754,26 @@ def run_interactive_menu(status_callback=None) -> None:
                 interactive_security_checkup(require_confirm=True)
                 continue
 
+            if low.startswith("/intel") or low.startswith("intel "):
+                parts = user_input.split(maxsplit=1)
+                target = parts[1] if len(parts) > 1 else ""
+                interactive_intel(inline_target=target)
+                continue
+
+            if low.startswith("/baseline") or low == "baseline":
+                parts = user_input.split(maxsplit=1)
+                lbl = parts[1] if len(parts) > 1 else "default"
+                interactive_baseline(label=lbl)
+                continue
+
+            if low in ("/diff", "diff"):
+                interactive_diff(analyze_with_ai=True)
+                continue
+
+            if low in ("/score", "/harden", "score", "harden"):
+                interactive_hardening_score(analyze_with_ai=False)
+                continue
+
             if low in ("/notes", "/list", "/defter"):
                 interactive_list_and_read()
                 continue
@@ -768,6 +893,65 @@ def run_interactive_menu(status_callback=None) -> None:
                             "Yukaridaki canli web arama sonuclarini kullanarak kullanicinin sorusunu detayli ve kaynak linkleriyle yanitla (tekrar web-search blogu yazma)."
                         ),
                     )
+                    try:
+                        updated_messages = get_chat_history(session_id=session, limit=40)
+                        last_assistant_reply = _stream_reply(updated_messages)
+                        continue
+                    except (KeyboardInterrupt, EOFError, OllamaConnectionError):
+                        break
+
+                # Otomatik Shodan InternetDB & GeoIP Tehdit Istihbarati Sorgusu
+                intel_queries = extract_intel_queries(last_assistant_reply)
+                if intel_queries:
+                    iq = "\n".join(intel_queries)
+                    console.print("[bold cyan][*][/bold cyan] Shodan InternetDB & GeoIP tehdit istihbarati sorgulaniyor...")
+                    intel_report = format_intel_report(iq, max_ips=8)
+                    add_chat_message(
+                        session_id=session,
+                        role="user",
+                        content=(
+                            f"{intel_report}\n\n"
+                            "Yukaridaki gercek Shodan InternetDB ve GeoIP istihbarat sonuclarini kullanarak kullaniciya detayli bir tehdit analizi sun (tekrar intel-lookup blogu yazma)."
+                        ),
+                    )
+                    try:
+                        updated_messages = get_chat_history(session_id=session, limit=40)
+                        last_assistant_reply = _stream_reply(updated_messages)
+                        continue
+                    except (KeyboardInterrupt, EOFError, OllamaConnectionError):
+                        break
+
+                # Otomatik SecOps Motorlari (baseline, diff, score)
+                secops_acts = extract_secops_actions(last_assistant_reply)
+                if secops_acts:
+                    act = secops_acts[0]
+                    if act == "baseline":
+                        interactive_baseline("default")
+                        break
+                    elif act == "diff":
+                        diff_data = compare_with_baseline()
+                        diff_md = format_baseline_diff_report(diff_data)
+                        console.print(Padding(Markdown(diff_md, code_theme="monokai"), (0, 1)))
+                        add_chat_message(
+                            session_id=session,
+                            role="user",
+                            content=(
+                                f"{diff_md}\n\n"
+                                "Yukaridaki sistem baseline karsilastirma (drift) raporunu degerlendir ve varsa anomalileri acikla (tekrar secops-action blogu yazma)."
+                            ),
+                        )
+                    elif act in ("score", "harden"):
+                        score_data = calculate_hardening_score()
+                        score_md = format_hardening_report(score_data)
+                        console.print(Padding(Markdown(score_md, code_theme="monokai"), (0, 1)))
+                        add_chat_message(
+                            session_id=session,
+                            role="user",
+                            content=(
+                                f"{score_md}\n\n"
+                                "Yukaridaki deterministik CIS guvenlik skoru tablosundaki eksikleri (FAIL/WARN) nasil kapatabilecegimizi ozetle (tekrar secops-action blogu yazma)."
+                            ),
+                        )
                     try:
                         updated_messages = get_chat_history(session_id=session, limit=40)
                         last_assistant_reply = _stream_reply(updated_messages)

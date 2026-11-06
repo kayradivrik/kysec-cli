@@ -11,6 +11,10 @@ from secai.commands.case_cmd import case_app, case_list
 from secai.commands.chat_cmd import chat_command
 from secai.commands.menu_cmd import (
     configure_api_key,
+    interactive_baseline,
+    interactive_diff,
+    interactive_hardening_score,
+    interactive_intel,
     interactive_restore_backup,
     interactive_security_checkup,
     manage_skills_interactive,
@@ -61,6 +65,38 @@ def check_system(
 ):
     """Sistemin anlik guvenlik taramasini (portlar, ag, firewall, loglar) yapar ve AI ile analiz eder."""
     interactive_security_checkup(require_confirm=not yes)
+
+
+@app.command("intel")
+def intel_cmd(
+    target: Optional[str] = typer.Argument(None, help="Sorgulanacak dis IP adresi veya log dosyasi"),
+):
+    """Shodan InternetDB ve GeoIP ile IP/CVE/Hash tehdit istihbarati sorgular."""
+    interactive_intel(inline_target=target or "")
+
+
+@app.command("baseline")
+def baseline_cmd(
+    label: str = typer.Argument("default", help="Baseline etiketi"),
+):
+    """Sistemin temiz referans kaydini (portlar, servisler, SHA256) alir."""
+    interactive_baseline(label=label)
+
+
+@app.command("diff")
+def diff_cmd(
+    ai: bool = typer.Option(False, "--ai", help="Sapmalari AI ile analiz et"),
+):
+    """Mevcut sistem durumunu son baseline ile karsilastirir (drift/anomali tespiti)."""
+    interactive_diff(analyze_with_ai=ai)
+
+
+@app.command("score")
+def score_cmd(
+    ai: bool = typer.Option(False, "--ai", help="Skor tablosunu AI ile degerlendir"),
+):
+    """Deterministik CIS Linux Guvenlik ve Sikilastirma Puanini (0-100) hesaplar."""
+    interactive_hardening_score(analyze_with_ai=ai)
 
 
 @app.command("restore")

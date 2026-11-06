@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import platform
 import re
 import subprocess
@@ -66,14 +67,37 @@ def extract_shell_commands(markdown_text: str) -> list[str]:
 
 
 def strip_internal_blocks(markdown_text: str) -> str:
-    """Ekranda kullaniciya gosterilmemesi gereken arka plan not ve web arama bloklarini temizler."""
+    """Ekranda kullaniciya gosterilmemesi gereken arka plan not, web arama ve secops bloklarini temizler."""
     cleaned = re.sub(
-        r"```(?:save-note|update-note|delete-note|export-note|web-search)\s*\n.*?(?:```|$)",
+        r"```(?:save-note|update-note|delete-note|export-note|web-search|intel-lookup|secops-action)\s*\n.*?(?:```|$)",
         "",
         markdown_text,
         flags=re.DOTALL | re.IGNORECASE,
     )
     return cleaned.strip()
+
+
+def extract_intel_queries(markdown_text: str) -> list[str]:
+    """Model yanitindaki ```intel-lookup bloklarindan hedef IP veya log metnini ayiklar."""
+    pattern = re.compile(r"```intel-lookup\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
+    targets: list[str] = []
+    for block in pattern.findall(markdown_text):
+        clean = block.strip()
+        if clean:
+            targets.append(clean)
+    return targets
+
+
+def extract_secops_actions(markdown_text: str) -> list[str]:
+    """Model yanitindaki ```secops-action bloklarindan (baseline, diff, score) komutlarini ayiklar."""
+    pattern = re.compile(r"```secops-action\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
+    actions: list[str] = []
+    for block in pattern.findall(markdown_text):
+        for line in block.strip().splitlines():
+            act = line.strip().lower()
+            if act in ("baseline", "diff", "score", "harden"):
+                actions.append(act)
+    return actions
 
 
 def extract_web_searches(markdown_text: str) -> list[str]:

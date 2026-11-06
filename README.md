@@ -21,6 +21,9 @@ Kısayollar (`secai` içinde):
 - `/api` : Gemini API anahtarı tanımla
 - `/models` : Model değiştir (Gemini / Ollama)
 - `/skills` : Yetenek seç veya ekle (`recon`, `hardening`, `detection`, `ctf`)
+- `/intel <ip/log>` : Shodan InternetDB & GeoIP tehdit istihbaratı
+- `/baseline` & `/diff` : Sistem referans kaydı ve anomali/sapma tespiti
+- `/score` : Deterministik CIS Linux güvenlik skoru (0-100)
 - `/check` : Sistem güvenlik taraması
 - `/report` : Oturum raporu (`.md`) üret
 - `@dosya` : Dosya içeriğini sohbete dahil et

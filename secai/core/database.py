@@ -83,6 +83,16 @@ def init_db() -> None:
             );
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS baselines (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                label TEXT NOT NULL DEFAULT 'default',
+                snapshot_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            """
+        )
 
 
 def backup_database(target_dir: Optional[Path] = None) -> Path:

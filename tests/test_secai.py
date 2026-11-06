@@ -8,6 +8,13 @@ TEST_DIR = tempfile.mkdtemp(prefix="secai_test_")
 os.environ["SECAI_DATA_DIR"] = TEST_DIR
 
 from secai.cli import app  # noqa: E402
+from secai.core.baseline import (  # noqa: E402
+    calculate_hardening_score,
+    compare_with_baseline,
+    format_baseline_diff_report,
+    format_hardening_report,
+    save_baseline,
+)
 from secai.core.database import (  # noqa: E402
     add_chat_message,
     add_note,
@@ -27,6 +34,11 @@ from secai.core.executor import (  # noqa: E402
     collect_security_checkup,
     extract_shell_commands,
     is_dangerous_command,
+)
+from secai.core.intel import (  # noqa: E402
+    extract_iocs,
+    format_intel_report,
+    is_public_ipv4,
 )
 from secai.core.skills import (  # noqa: E402
     create_custom_skill,
@@ -130,6 +142,46 @@ class SecAITestSuite(unittest.TestCase):
         self.assertEqual(active["name"], "web-audit")
         set_active_skill(None)
         self.assertIsNone(get_active_skill())
+
+    def test_ioc_extraction_and_shodan_intel(self):
+        self.assertFalse(is_public_ipv4("127.0.0.1"))
+        self.assertFalse(is_public_ipv4("192.168.1.15"))
+        self.assertFalse(is_public_ipv4("10.0.0.5"))
+        self.assertTrue(is_public_ipv4("1.1.1.1"))
+
+        sample_log = (
+            "Failed password for root from 185.220.101.45 port 44322 ssh2 "
+            "local 192.168.1.10 CVE-2024-6387 "
+            "sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        )
+        iocs = extract_iocs(sample_log)
+        self.assertEqual(iocs["ips"], ["185.220.101.45"])
+        self.assertEqual(iocs["cves"], ["CVE-2024-6387"])
+        self.assertEqual(
+            iocs["sha256"],
+            ["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"],
+        )
+
+        report = format_intel_report(sample_log, max_ips=1)
+        self.assertIn("185.220.101.45", report)
+        self.assertIn("CVE-2024-6387", report)
+
+    def test_baseline_snapshot_diff_and_hardening_score(self):
+        record = save_baseline(label="unit-test-clean")
+        self.assertGreater(record["id"], 0)
+        self.assertIn("ports", record["snapshot"])
+
+        diff = compare_with_baseline()
+        self.assertTrue(diff["has_baseline"])
+        diff_md = format_baseline_diff_report(diff)
+        self.assertIn("Baseline", diff_md)
+
+        score_res = calculate_hardening_score()
+        self.assertGreaterEqual(score_res["score"], 0)
+        self.assertLessEqual(score_res["score"], 100)
+        self.assertGreater(len(score_res["checks"]), 0)
+        score_md = format_hardening_report(score_res)
+        self.assertIn("100", score_md)
 
 
 if __name__ == "__main__":
