@@ -306,7 +306,7 @@ def collect_security_checkup(require_confirm: bool = True) -> str | None:
     else:
         checks = [
             ("Ag Arayuzleri (ip -br a)", "ip -br a"),
-            ("Dinlenen Portlar (ss -tuln)", "ss -tuln"),
+            ("Dinlenen Portlar ve Surecler (ss -tulnp)", "ss -tulnp 2>/dev/null || ss -tuln"),
             ("ARP / Yerel Ag Komsulari (ip neigh)", "ip neigh"),
             (
                 "Guvenlik Duvari Servis Durumu",

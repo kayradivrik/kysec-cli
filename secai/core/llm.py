@@ -132,58 +132,108 @@ def _stream_gemini(
         if candidate not in fallback_chain:
             fallback_chain.append(candidate)
 
-    payload = {
-        "system_instruction": {"parts": [{"text": system_prompt}]},
-        "contents": contents,
-        "generationConfig": {"temperature": 0.2},
-    }
     headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
 
     last_error = ""
     for current_model in fallback_chain:
+        gen_config: dict = {
+            "temperature": 0.2,
+            "maxOutputTokens": 8192,
+        }
+        if "flash" in current_model:
+            gen_config["thinkingConfig"] = {"thinkingBudget": 0}
+
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:streamGenerateContent"
             "?alt=sse"
         )
-        try:
-            with requests.post(
-                url, headers=headers, json=payload, stream=True, timeout=(10, 300)
-            ) as resp:
-                if resp.status_code in (404, 429, 503):
-                    last_error = f"{current_model} ({resp.status_code})"
-                    continue
-                if resp.status_code in (400, 401, 403):
-                    err_text = resp.text[:250]
-                    raise OllamaConnectionError(
-                        f"Gemini API Hatasi ({resp.status_code}): API anahtarinizi (/api komutuyla) kontrol edin. Detay: {err_text}"
-                    )
-                resp.raise_for_status()
-                resp.encoding = "utf-8"
+        yielded_chunks: list[str] = []
+        finish_reason: Optional[str] = None
+        active_contents = list(contents)
 
-                if current_model != model:
-                    save_settings({"gemini_model": current_model})
+        # DPI / Paket bolucu (ciadpi vb.) veya ag kopmasi nedeniyle SSE akisi finishReason="STOP"
+        # gelmeden yarida kesilirse kaldigi yerden otomatik devam et (en fazla 3 parca)
+        for attempt in range(3):
+            finish_reason = None
+            payload = {
+                "system_instruction": {"parts": [{"text": system_prompt}]},
+                "contents": active_contents,
+                "generationConfig": gen_config,
+            }
+            try:
+                with requests.post(
+                    url, headers=headers, json=payload, stream=True, timeout=(10, 180)
+                ) as resp:
+                    if resp.status_code in (404, 429, 503) and not yielded_chunks:
+                        last_error = f"{current_model} ({resp.status_code})"
+                        break
+                    if resp.status_code in (400, 401, 403) and not yielded_chunks:
+                        err_text = resp.text[:250]
+                        raise OllamaConnectionError(
+                            f"Gemini API Hatasi ({resp.status_code}): API anahtarinizi (/api komutuyla) kontrol edin. Detay: {err_text}"
+                        )
+                    resp.raise_for_status()
 
-                for line in resp.iter_lines(decode_unicode=True):
-                    if not line or not line.startswith("data:"):
-                        continue
-                    json_str = line[5:].strip()
-                    if not json_str or json_str == "[DONE]":
-                        continue
-                    try:
-                        chunk = json.loads(json_str)
-                        candidates = chunk.get("candidates", [])
-                        if candidates:
-                            parts = candidates[0].get("content", {}).get("parts", [])
-                            for p in parts:
-                                text = p.get("text", "")
-                                if text:
-                                    yield text
-                    except json.JSONDecodeError:
-                        continue
-                return
-        except requests.RequestException as exc:
-            last_error = str(exc)
-            continue
+                    if current_model != model:
+                        save_settings({"gemini_model": current_model})
+
+                    for raw_line in resp.iter_lines(chunk_size=4096):
+                        if not raw_line:
+                            continue
+                        line = (
+                            raw_line.decode("utf-8", errors="replace")
+                            if isinstance(raw_line, bytes)
+                            else raw_line
+                        )
+                        if not line.startswith("data:"):
+                            continue
+                        json_str = line[5:].strip()
+                        if not json_str or json_str == "[DONE]":
+                            continue
+                        try:
+                            chunk = json.loads(json_str)
+                            candidates = chunk.get("candidates", [])
+                            if candidates:
+                                cand = candidates[0]
+                                if cand.get("finishReason"):
+                                    finish_reason = cand.get("finishReason")
+                                parts = cand.get("content", {}).get("parts", [])
+                                for p in parts:
+                                    if p.get("thought"):
+                                        continue
+                                    text = p.get("text", "")
+                                    if text:
+                                        yielded_chunks.append(text)
+                                        yield text
+                        except json.JSONDecodeError:
+                            continue
+            except requests.RequestException as exc:
+                last_error = str(exc)
+                if not yielded_chunks:
+                    break
+
+            if finish_reason == "STOP" or not yielded_chunks:
+                break
+
+            # Akis STOP olmadan kesildiyse kaldigi yerden devam ettir
+            partial_text = "".join(yielded_chunks)
+            active_contents = list(contents) + [
+                {"role": "model", "parts": [{"text": partial_text}]},
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "text": (
+                                "Yanitin ag kesintisi nedeniyle tam bittigi noktada yarida kaldi. "
+                                "Onceki yazdiklarini ASLA tekrarlamadan, tam kaldigin kelimeden/satirdan devam ederek yaniti tamamla."
+                            )
+                        }
+                    ],
+                },
+            ]
+
+        if yielded_chunks:
+            return
 
     raise OllamaConnectionError(
         f"Gemini API yanit veremedi ({last_error}). '/model' yazarak modeli degistirebilir veya yerel Ollama'ya gecebilirsiniz."

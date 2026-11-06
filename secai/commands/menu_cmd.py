@@ -496,15 +496,23 @@ def interactive_security_checkup(require_confirm: bool = True) -> None:
     if not telemetry:
         return
 
+    score_data = calculate_hardening_score()
+    score_md = format_hardening_report(score_data)
+    console.print()
+    console.print(Padding(Markdown(score_md, code_theme="monokai"), (0, 1)))
+    console.print()
+
     llm_info = get_active_llm_info()
-    console.print(f"[bold cyan][*][/bold cyan] model: {llm_info['model']} ile sistem guvenlik analizi yapiliyor...")
+    console.print(f"[bold cyan][*][/bold cyan] model: {llm_info['model']} ile detayli sistem guvenlik analizi yapiliyor...")
 
     prompt = (
-        "Asagida kullanicinin bilgisayarindan toplanan anlik sistem guvenlik telemetrisi "
-        "(dinlenen portlar, ag arayuzleri, komsu cihazlar, guvenlik duvari durumu, son hata/SSH loglari ve surecler) yer almaktadir.\n"
-        "Bu verileri inceleyip sistemin guvenlik durumunu Markdown tablolari ve basliklarla analiz et, acik portlari veya olasi riskleri acikla ve "
-        "varsa sikilastirma (hardening) onerilerini sun:\n\n"
-        f"{telemetry}"
+        "Asagida kullanicinin bilgisayarindan toplanan deterministik CIS Guvenlik Skoru tablosu ve anlik sistem guvenlik telemetrisi "
+        "(dinlenen portlar, surecler, ag arayuzleri, komsu cihazlar, guvenlik duvari durumu, son hata/SSH loglari) yer almaktadir.\n"
+        "Lutfen analizi yarida kesmeden eksiksiz olarak su basliklarla yaz:\n"
+        "1. **Risk Seviyesi ve Nedenleri:** Sistemin neden bu risk seviyesinde (DUSUK/ORTA/YUKSEK) oldugunu somut bulgularla (hangi portlar dis aga acik, hangi sysctl parametreleri eksik) madde madde acikla.\n"
+        "2. **Acik Portlar ve Servis Analizi (Markdown Tablosu):** `127.0.0.1` (yerel/guvenli) ile `0.0.0.0` / `*` (tum yerel aga acik) portlari ayirarak tablo halinde goster.\n"
+        "3. **Uygulanabilir Sikilastirma (Hardening) Komutlari:** Tespit edilen WARN/FAIL maddelerini ve acik port risklerini kapatmak icin dogrudan uygulanabilir Arch Linux komutlarini ```bash bloklari icinde ver.\n\n"
+        f"{score_md}\n\n{telemetry}"
     )
 
     try:
@@ -514,11 +522,13 @@ def interactive_security_checkup(require_confirm: bool = True) -> None:
         console.print(f"\n[bold red][-][/bold red] {err}\n")
         return
 
-    if analysis and Confirm.ask("Bu sistem guvenlik raporunu Vaka Defterine kaydet?", default=True):
+    full_report = f"{score_md}\n\n---\n\n{analysis}" if analysis else score_md
+
+    if full_report and Confirm.ask("Bu sistem guvenlik raporunu Vaka Defterine kaydet?", default=True):
         save_title = Prompt.ask("Baslik", default="Sistem Guvenlik Check-up Raporu")
         note_id = add_note(
             title=save_title,
-            content=analysis,
+            content=full_report,
             category="secops",
             tags="checkup,hardening",
         )

@@ -464,3 +464,4 @@ def format_hardening_report(result: dict) -> str:
             f"| **{c['name']}** | `{c['status']}` | {c['points']} | {c['current']} | {c['remediation']} |"
         )
     return "\n".join(lines)
+

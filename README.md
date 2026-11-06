@@ -37,4 +37,4 @@ secai backup
 
 ## Lisans
 
-MIT © [Kayra Divrik (sonuscato)](https://github.com/sonuscato)
+MIT © [Kayra Divrik (sonuscato)](https://github.com/kayradivrik)
