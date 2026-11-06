@@ -442,8 +442,27 @@ def make_handler(token: str):
 
 def run_web_server(port: int = 8765, open_browser: bool = True) -> None:
     token = secrets.token_urlsafe(24)
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(token))
-    url = f"http://127.0.0.1:{port}/"
+    handler = make_handler(token)
+
+    # Port cakismasi onleme (allow_reuse_address ve otomatik bosta port arama)
+    ThreadingHTTPServer.allow_reuse_address = True
+    httpd = None
+    target_port = port
+    for p in range(port, port + 10):
+        try:
+            httpd = ThreadingHTTPServer(("127.0.0.1", p), handler)
+            target_port = p
+            break
+        except OSError as e:
+            if e.errno in (98, 48):  # EADDRINUSE
+                continue
+            raise
+
+    if not httpd:
+        print(f"[!] 127.0.0.1 üzerinde {port}-{port+9} aralığındaki portlar dolu.")
+        return
+
+    url = f"http://127.0.0.1:{target_port}/"
     print(f"[+] SecAI web arayuzu: {url}  (durdurmak icin Ctrl+C)")
 
     if open_browser:
