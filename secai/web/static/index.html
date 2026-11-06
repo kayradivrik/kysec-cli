@@ -1,15 +1,40 @@
 <!doctype html>
-<html lang="tr">
+<html lang="tr" class="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>secai</title>
+  <title>SecAI Workspace</title>
+  <!-- Tailwind Play CDN for immediate, build-free production-grade utility rendering -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            zinc: {
+              850: '#151518',
+              900: '#101012',
+              925: '#0c0c0e',
+              950: '#08080a',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Fira Code', 'Menlo', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
   <script>window.SECAI_TOKEN = "__SECAI_TOKEN__";</script>
 </head>
-<body>
+<body class="bg-zinc-950 text-zinc-100 font-sans antialiased overflow-hidden select-none">
   <div id="root"></div>
   <script type="module" src="/app.js"></script>
 </body>
 </html>
-
