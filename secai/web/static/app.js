@@ -39,6 +39,8 @@ const Icon = {
   Refresh: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>`,
   Sparkles: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"></path></svg>`,
   Layers: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>`,
+  Bot: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"></rect><circle cx="12" cy="5" r="2"></circle><path d="M12 7v4"></path><line x1="8" y1="16" x2="8" y2="16"></line><line x1="16" y1="16" x2="16" y2="16"></line></svg>`,
+  Cpu: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg>`,
 };
 
 // --- Audio Player Manager (Edge Neural TTS) ---
@@ -404,6 +406,7 @@ function ChatView({ activeSession, setActiveSession, sessions, setSessions, acti
   };
 
   const emptyPrompts = [
+    { label: "SecOps Ajanını Değiştir (/agent)", cmd: "/agent" },
     { label: "Açık TCP/UDP portlarını denetle", cmd: "Sistemimdeki açık portları ve dinleyen servisleri analiz et" },
     { label: "CIS Linux güvenlik puanını hesapla", cmd: "Sistem güvenlik (CIS hardening) skorumu çıkar" },
     { label: "Sistem baseline sapmalarını kontrol et", cmd: "Son referans noktasına göre sistemde bir sapma veya yeni port var mı?" },
@@ -428,7 +431,7 @@ function ChatView({ activeSession, setActiveSession, sessions, setSessions, acti
               ${activeSkill && html`
                 <div class="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-950/30 border border-emerald-800/50 text-[11px] font-mono text-emerald-400">
                   <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                  <span>Aktif Beceri: ${activeSkill}</span>
+                  <span>Aktif Ajan: ${activeSkill}</span>
                 </div>
               `}
               <div class="mt-8 flex flex-wrap gap-2 justify-center max-w-xl mx-auto">
@@ -911,6 +914,125 @@ function NotesView() {
     </div>`;
 }
 
+// --- Dedicated Agents (SecOps Ajanları) Hub ---
+function AgentsView({ activeSkill, onSelectAgent, onSendToChat }) {
+  const agentProfiles = [
+    {
+      id: null,
+      name: "Genel SecOps Ajanı",
+      tag: "STANDART",
+      desc: "Genel Linux sistem güvenliği, terminal komutları, log okuma ve genel siber asistanlık.",
+      focus: "Temel Linux, Bash Komutları, Sistem Analizi",
+      icon: "🎯",
+    },
+    {
+      id: "recon",
+      name: "Recon Ajanı",
+      tag: "AĞ & KEŞİF",
+      desc: "Ağ ve port keşfi, servis versiyon tespiti, nmap, ss, ip, dig araçları ve yerel ağ haritalama.",
+      focus: "Nmap, Açık Portlar, Ağ Topolojisi, Servis Tespiti",
+      icon: "🔍",
+    },
+    {
+      id: "hardening",
+      name: "Hardening Ajanı",
+      tag: "CIS SIKILAŞTIRMA",
+      desc: "CIS Benchmark standartlarına göre Linux sıkılaştırma, SSH, firewall, sysctl çekirdek parametreleri ve yetki kısıtlamaları.",
+      focus: "Kernel Parametreleri, UFW/iptables, SSH Güvenliği, SUID",
+      icon: "🛡️",
+    },
+    {
+      id: "detection",
+      name: "Detection Ajanı",
+      tag: "KURAL & TESPİT",
+      desc: "Tehdit ve saldırı tespiti, Sigma kuralı yazımı, YARA kuralları, Fail2ban ve brute-force engelleme.",
+      focus: "YARA, Sigma, Fail2ban, Log Anomali Tespiti",
+      icon: "⚡",
+    },
+    {
+      id: "ctf",
+      name: "CTF & PrivEsc Ajanı",
+      tag: "OFANSİF ANALİZ",
+      desc: "CTF çözümleri, Linux yerel yetki yükseltme (Privilege Escalation), GTFOBins, SUID ve cron zafiyetleri incelemesi.",
+      focus: "PrivEsc, GTFOBins, SUID Exploit, Yetki Yükseltme",
+      icon: "🚩",
+    },
+  ];
+
+  return html`
+    <div class="flex-1 overflow-y-auto p-6 md:p-8 bg-[#09090b]">
+      <div class="max-w-4xl mx-auto space-y-6">
+        <div class="border-b border-zinc-800 pb-4">
+          <div class="flex items-center gap-2">
+            <${Icon.Bot} />
+            <h2 class="text-base font-semibold text-zinc-100">SecAI Ajanları (SecOps Agent Hub)</h2>
+          </div>
+          <p class="text-xs text-zinc-500 mt-1">
+            Görevinize uygun uzman siber güvenlik ajanını seçin. Seçtiğiniz ajan tüm promptlara kendi uzmanlık talimatlarıyla yanıt verir.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          ${agentProfiles.map((ag) => {
+            const isActive = (!ag.id && !activeSkill) || (ag.id && activeSkill === ag.id);
+            return html`
+              <div
+                key=${ag.name}
+                class="rounded-xl border p-5 flex flex-col justify-between transition-all ${isActive ? 'bg-emerald-950/15 border-emerald-800/80 shadow-lg ring-1 ring-emerald-500/20' : 'bg-zinc-900/40 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900/70'}"
+              >
+                <div>
+                  <div class="flex items-center justify-between mb-2.5">
+                    <div class="flex items-center gap-2">
+                      <span class="text-lg">${ag.icon}</span>
+                      <span class="text-sm font-semibold text-zinc-100 font-sans">${ag.name}</span>
+                    </div>
+                    <span class="text-[10px] font-mono px-2 py-0.5 rounded border ${isActive ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800' : 'bg-zinc-800 text-zinc-400 border-zinc-700'}">
+                      ${ag.tag}
+                    </span>
+                  </div>
+
+                  <p class="text-xs text-zinc-400 leading-relaxed mb-3">
+                    ${ag.desc}
+                  </p>
+
+                  <div class="pt-2 border-t border-zinc-850/80 text-[11px] text-zinc-500">
+                    <span class="font-mono text-zinc-400">Odak:</span> ${ag.focus}
+                  </div>
+                </div>
+
+                <div class="mt-4 pt-3 flex items-center justify-between border-t border-zinc-850">
+                  ${isActive
+                    ? html`
+                      <span class="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium font-mono">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        Aktif Ajan
+                      </span>`
+                    : html`
+                      <button
+                        onClick=${() => onSelectAgent(ag.id)}
+                        class="text-xs px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 font-medium transition-colors"
+                      >
+                        Bu Ajanı Seç
+                      </button>`}
+
+                  <button
+                    onClick=${() => {
+                      if (!isActive) onSelectAgent(ag.id);
+                      onSendToChat(`Merhaba ${ag.name}, bu alanda bana nasıl yardımcı olabilirsin?`);
+                    }}
+                    class="text-xs text-zinc-400 hover:text-zinc-200 flex items-center gap-1 transition-colors"
+                  >
+                    <span>Sohbet Başlat</span>
+                    <span>→</span>
+                  </button>
+                </div>
+              </div>`;
+          })}
+        </div>
+      </div>
+    </div>`;
+}
+
 // --- Hardening Scorer View ---
 function ScoreView({ onSendToChat }) {
   const [data, setData] = useState(null);
@@ -993,14 +1115,24 @@ function App() {
   const [activeSkill, setActiveSkill] = useState(null);
   const [autoSpeak, setAutoSpeak] = useState(false);
   const [skillMenuOpen, setSkillMenuOpen] = useState(false);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [modelsData, setModelsData] = useState(null);
 
-  useEffect(() => {
+  const loadStatus = () => {
     api("/api/status").then((r) => r.json()).then((s) => {
       setStatus(s);
       setActiveSkill(s.active_skill);
       setAutoSpeak(Boolean(s.tts_enabled));
     }).catch(() => {});
+  };
 
+  const loadModels = () => {
+    api("/api/models").then((r) => r.json()).then(setModelsData).catch(() => {});
+  };
+
+  useEffect(() => {
+    loadStatus();
+    loadModels();
     api("/api/skills").then((r) => r.json()).then(setSkills).catch(() => {});
 
     api("/api/sessions").then((r) => r.json()).then((d) => {
@@ -1030,6 +1162,14 @@ function App() {
     const data = await res.json();
     setActiveSkill(data.active);
     setSkillMenuOpen(false);
+    loadStatus();
+  };
+
+  const switchModel = async (provider, model) => {
+    await api("/api/model/set", { method: "POST", body: JSON.stringify({ provider, model }) });
+    setModelMenuOpen(false);
+    loadStatus();
+    loadModels();
   };
 
   const handleSendToChat = async (promptText) => {
@@ -1069,6 +1209,7 @@ function App() {
         <div class="px-3 pb-2 space-y-0.5">
           ${[
             { id: "chat", label: "Sohbet & Ses", icon: Icon.MessageSquare },
+            { id: "agents", label: "Ajanlar (Agents)", icon: Icon.Bot },
             { id: "intel", label: "Tehdit İstihbaratı", icon: Icon.Globe },
             { id: "baseline", label: "Baseline & Sapma", icon: Icon.Activity },
             { id: "score", label: "CIS Güvenlik Skoru", icon: Icon.ShieldCheck },
@@ -1126,52 +1267,96 @@ function App() {
                 <${Icon.Sidebar} />
               </button>`}
             <span class="text-xs font-medium text-zinc-300 font-sans">
-              ${tab === "chat" ? (sessions.find((s) => s.id === activeSession)?.title || "Sohbet") : tab === "intel" ? "Tehdit İstihbaratı" : tab === "baseline" ? "Sistem Baseline & Sapma" : tab === "score" ? "Güvenlik Skoru" : tab === "notes" ? "Vaka Defteri" : "Kalıcı Bellek"}
+              ${tab === "chat" ? (sessions.find((s) => s.id === activeSession)?.title || "Sohbet") : tab === "agents" ? "SecAI Ajanları" : tab === "intel" ? "Tehdit İstihbaratı" : tab === "baseline" ? "Sistem Baseline & Sapma" : tab === "score" ? "Güvenlik Skoru" : tab === "notes" ? "Vaka Defteri" : "Kalıcı Bellek"}
             </span>
           </div>
 
           <div class="flex items-center gap-2">
-            <!-- Skill Selector Dropdown -->
+            <!-- Ajan (Agent / Skill) Selector Dropdown -->
             <div class="relative">
               <button
-                onClick=${() => setSkillMenuOpen(!skillMenuOpen)}
+                onClick=${() => { setSkillMenuOpen(!skillMenuOpen); setModelMenuOpen(false); }}
                 class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-300 hover:border-zinc-700 transition-colors"
+                title="Aktif Ajanı Değiştir"
               >
-                <${Icon.Layers} />
-                <span>${activeSkill ? `Beceri: ${activeSkill}` : "Standart Mod"}</span>
+                <${Icon.Bot} />
+                <span class="text-emerald-400 font-sans font-medium text-[11px]">Ajan:</span>
+                <span class="capitalize">${activeSkill ? activeSkill : "Standart"}</span>
                 <${Icon.ChevronDown} />
               </button>
 
               ${skillMenuOpen && html`
-                <div class="absolute right-0 mt-1.5 w-60 rounded-lg bg-zinc-900 border border-zinc-800 shadow-2xl py-1 z-50 text-xs">
+                <div class="absolute right-0 mt-1.5 w-64 rounded-lg bg-zinc-900 border border-zinc-800 shadow-2xl py-1 z-50 text-xs">
+                  <div class="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-zinc-500 border-b border-zinc-800">SecOps Ajanı Seç</div>
                   <button
                     onClick=${() => switchSkill(null)}
-                    class="w-full text-left px-3 py-2 hover:bg-zinc-800 flex items-center justify-between ${!activeSkill ? 'text-emerald-400 font-semibold' : 'text-zinc-300'}"
+                    class="w-full text-left px-3 py-2 hover:bg-zinc-800 flex items-center justify-between ${!activeSkill ? 'text-emerald-400 font-semibold bg-zinc-850/50' : 'text-zinc-300'}"
                   >
-                    <span>Standart / Genel Siber Asistan</span>
+                    <div>
+                      <div class="font-medium text-zinc-200">🎯 Genel / Standart Ajan</div>
+                      <div class="text-[10px] text-zinc-500">Genel Linux & siber güvenlik danışmanı</div>
+                    </div>
                     ${!activeSkill && html`<${Icon.Check} />`}
                   </button>
                   ${skills.map((sk) => html`
                     <button
                       key=${sk.name}
                       onClick=${() => switchSkill(sk.name)}
-                      class="w-full text-left px-3 py-2 hover:bg-zinc-800 flex items-center justify-between ${activeSkill === sk.name ? 'text-emerald-400 font-semibold' : 'text-zinc-300'}"
+                      class="w-full text-left px-3 py-2 hover:bg-zinc-800 flex items-center justify-between ${activeSkill === sk.name ? 'text-emerald-400 font-semibold bg-zinc-850/50' : 'text-zinc-300'}"
                     >
                       <div>
-                        <div class="font-mono text-zinc-200">${sk.name}</div>
-                        <div class="text-[10px] text-zinc-500 truncate max-w-[180px]">${sk.description}</div>
+                        <div class="font-medium text-zinc-200 capitalize">${sk.name === "recon" ? "🔍 Recon Ajanı" : sk.name === "hardening" ? "🛡️ Hardening Ajanı" : sk.name === "detection" ? "⚡ Detection Ajanı" : "🚩 CTF Ajanı"}</div>
+                        <div class="text-[10px] text-zinc-500 truncate max-w-[190px]">${sk.description}</div>
                       </div>
                       ${activeSkill === sk.name && html`<${Icon.Check} />`}
                     </button>
                   `)}
+                  <div class="pt-1 border-t border-zinc-800 px-3 py-1">
+                    <button onClick=${() => { setSkillMenuOpen(false); setTab("agents"); }} class="text-[11px] text-emerald-400 hover:underline">Tüm Ajan Detaylarını Gör →</button>
+                  </div>
                 </div>
               `}
             </div>
 
-            <!-- Active LLM Model Badge -->
-            <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-400">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-              <span>${status ? status.model : "yerel"}</span>
+            <!-- Active LLM Model Selector Dropdown -->
+            <div class="relative">
+              <button
+                onClick=${() => { setModelMenuOpen(!modelMenuOpen); setSkillMenuOpen(false); }}
+                class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-300 hover:border-zinc-700 transition-colors"
+                title="Modeli Değiştir"
+              >
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <span>${status ? status.model : "yerel"}</span>
+                <${Icon.ChevronDown} />
+              </button>
+
+              ${modelMenuOpen && html`
+                <div class="absolute right-0 mt-1.5 w-60 rounded-lg bg-zinc-900 border border-zinc-800 shadow-2xl py-1 z-50 text-xs">
+                  <div class="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-zinc-500 border-b border-zinc-800">Yerel Ollama Modelleri</div>
+                  ${(modelsData?.ollama_models || ["gemma3:4b", "qwen2.5-coder:7b"]).map((m) => html`
+                    <button
+                      key=${m}
+                      onClick=${() => switchModel("ollama", m)}
+                      class="w-full text-left px-3 py-2 hover:bg-zinc-800 flex items-center justify-between ${status?.model === m ? 'text-emerald-400 font-semibold' : 'text-zinc-300'}"
+                    >
+                      <span class="font-mono text-xs">${m}</span>
+                      ${status?.model === m && html`<${Icon.Check} />`}
+                    </button>
+                  `)}
+
+                  <div class="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-zinc-500 border-t border-b border-zinc-800 mt-1">Google Gemini API</div>
+                  ${["gemini-2.5-flash", "gemini-3-flash-preview"].map((m) => html`
+                    <button
+                      key=${m}
+                      onClick=${() => switchModel("gemini", m)}
+                      class="w-full text-left px-3 py-2 hover:bg-zinc-800 flex items-center justify-between ${status?.model === m ? 'text-emerald-400 font-semibold' : 'text-zinc-300'}"
+                    >
+                      <span class="font-mono text-xs">${m}</span>
+                      ${status?.model === m && html`<${Icon.Check} />`}
+                    </button>
+                  `)}
+                </div>
+              `}
             </div>
           </div>
         </header>
@@ -1179,6 +1364,7 @@ function App() {
         <!-- Dynamic View Router -->
         <div class="flex-1 flex overflow-hidden">
           ${tab === "chat" && html`<${ChatView} activeSession=${activeSession} setActiveSession=${setActiveSession} sessions=${sessions} setSessions=${setSessions} activeSkill=${activeSkill} autoSpeak=${autoSpeak} setAutoSpeak=${setAutoSpeak} />`}
+          ${tab === "agents" && html`<${AgentsView} activeSkill=${activeSkill} onSelectAgent=${switchSkill} onSendToChat=${handleSendToChat} />`}
           ${tab === "intel" && html`<${IntelView} onSendToChat=${handleSendToChat} />`}
           ${tab === "baseline" && html`<${BaselineView} onSendToChat=${handleSendToChat} />`}
           ${tab === "score" && html`<${ScoreView} onSendToChat=${handleSendToChat} />`}

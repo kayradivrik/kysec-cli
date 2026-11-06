@@ -146,6 +146,28 @@ def make_handler(token: str):
                     }
                 )
 
+            if path == "/api/models":
+                info = get_active_llm_info()
+                ollama_models = []
+                try:
+                    import urllib.request
+                    req = urllib.request.Request(f"{info['ollama_url']}/api/tags")
+                    with urllib.request.urlopen(req, timeout=1.5) as r:
+                        if r.status == 200:
+                            data = json.loads(r.read().decode("utf-8"))
+                            ollama_models = [m["name"] for m in data.get("models", [])]
+                except Exception:
+                    pass
+                return self._send_json(
+                    {
+                        "active_provider": info["provider"],
+                        "active_model": info["model"],
+                        "ollama_models": ollama_models or ["gemma3:4b", "qwen2.5-coder:7b"],
+                        "gemini_models": ["gemini-2.5-flash", "gemini-3-flash-preview"],
+                        "has_gemini_key": bool(info["api_key"]),
+                    }
+                )
+
             if path == "/api/skills":
                 return self._send_json(list_all_skills())
 
@@ -245,6 +267,21 @@ def make_handler(token: str):
                 chosen = set_active_skill(name)
                 return self._send_json({"active": chosen["name"] if chosen else None})
 
+            if path == "/api/model/set":
+                data = self._read_json()
+                provider = data.get("provider")
+                model = data.get("model")
+                settings = load_settings()
+                if provider:
+                    settings["provider"] = provider
+                if model:
+                    if provider == "gemini":
+                        settings["gemini_model"] = model
+                    else:
+                        settings["ollama_model"] = model
+                save_settings(settings)
+                return self._send_json({"ok": True, "active": get_active_llm_info()})
+
             if path == "/api/voice/settings":
                 data = self._read_json()
                 settings = load_settings()
@@ -300,6 +337,53 @@ def make_handler(token: str):
 
         def _stream_chat(self, message: str, session_id: str) -> None:
             add_chat_message(session_id=session_id, role="user", content=message)
+
+            # Slash komutlarini aninda karsila (Ajan / Beceri / Model)
+            raw_cmd = message.strip()
+            if raw_cmd.startswith(("/agent", "/ajan", "/skill", "/skills")):
+                parts = raw_cmd.split(maxsplit=1)
+                arg = parts[1].strip().lower() if len(parts) > 1 else ""
+                if arg:
+                    if arg in ("default", "standart", "none", "sifirla", "sıfırla", "genel"):
+                        set_active_skill(None)
+                        reply = "🎯 **Aktif Ajan:** `Standart / Genel Siber Asistan` moduna geçildi."
+                    else:
+                        chosen = set_active_skill(arg)
+                        if chosen:
+                            reply = (
+                                f"🕵️ **Aktif Ajan Seçildi:** `{chosen['name']}`\n\n"
+                                f"**Uzmanlık:** {chosen.get('description', '')}\n\n"
+                                f"Ajan talimatları sisteme yüklendi. Artık bu uzmanlık profiliyle çalışıyoruz."
+                            )
+                        else:
+                            all_s = list_all_skills()
+                            names = ", ".join(f"`{s['name']}`" for s in all_s)
+                            reply = f"❌ `{arg}` isimli ajan bulunamadı.\n\nKullanılabilir Ajanlar: {names} veya `standart`."
+                else:
+                    active = get_active_skill()
+                    all_s = list_all_skills()
+                    lines = [
+                        "### 🕵️ SecAI Ajanları & Uzmanlık Modları\n",
+                        f"**Mevcut Aktif Ajan:** `{active['name'] if active else 'Standart / Genel'}`\n",
+                        "| Ajan | Uzmanlık Alanı | Komut |",
+                        "| :--- | :--- | :--- |",
+                        "| `standart` | Genel Linux ve SecOps Danışmanı | `/agent standart` |",
+                    ]
+                    for s in all_s:
+                        lines.append(f"| `{s['name']}` | {s.get('description', '')} | `/agent {s['name']}` |")
+                    lines.append(
+                        "\n_İpucu: Sağ üstteki **'Ajan'** butonundan veya sol menüdeki **'Ajanlar'** sekmesinden tek tıkla değiştirebilirsiniz._"
+                    )
+                    reply = "\n".join(lines)
+
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(reply.encode("utf-8"))
+                add_chat_message(session_id=session_id, role="assistant", content=reply)
+                return
+
             history = get_chat_history(session_id=session_id, limit=60)
 
             self.send_response(200)
