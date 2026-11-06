@@ -17,6 +17,7 @@ from secai.commands.menu_cmd import (
     interactive_intel,
     interactive_restore_backup,
     interactive_security_checkup,
+    interactive_voice_loop,
     manage_skills_interactive,
     run_interactive_menu,
 )
@@ -97,6 +98,12 @@ def score_cmd(
 ):
     """Deterministik CIS Linux Guvenlik ve Sikilastirma Puanini (0-100) hesaplar."""
     interactive_hardening_score(analyze_with_ai=ai)
+
+
+@app.command("voice")
+def voice_cmd():
+    """Canli Sesli Diyalog (Telsiz) modunu baslatir."""
+    interactive_voice_loop(session="default")
 
 
 @app.command("restore")

@@ -18,6 +18,8 @@ secai
 ```
 
 Kısayollar (`secai` içinde):
+- `/v` & `/voice` : Bas-konuş ve canlı sesli diyalog (telsiz) modu
+- `/ses` : Ses ayarları (Ahmet/Emel ses seçimi, sesli yanıt aç/kapat)
 - `/api` : Gemini API anahtarı tanımla
 - `/models` : Model değiştir (Gemini / Ollama)
 - `/skills` : Yetenek seç veya ekle (`recon`, `hardening`, `detection`, `ctf`)

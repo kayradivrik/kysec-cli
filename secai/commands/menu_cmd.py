@@ -68,11 +68,22 @@ from secai.core.skills import (
     list_all_skills,
     set_active_skill,
 )
+from secai.core.voice import (
+    VOICE_PROFILES,
+    record_voice_input,
+    speak_text,
+    transcribe_voice,
+)
 from secai.core.web import format_web_results
 
 console = Console()
 
 SLASH_COMMANDS = [
+    "/v",
+    "/voice",
+    "/talk",
+    "/ses",
+    "/tts",
     "/api",
     "/model",
     "/models",
@@ -152,8 +163,10 @@ def render_top_banner() -> None:
     """Ekranı temizler ve Antigravity CLI tarzı üst başlığı çizer."""
     console.clear()
     llm_info = get_active_llm_info()
+    settings = load_settings()
     active_skill = get_active_skill()
     skill_badge = f"  [skill: {active_skill['name']}]" if active_skill else ""
+    tts_badge = "  [ses: aktif]" if settings.get("tts_enabled") else ""
     user_host, cwd_short = get_user_host_cwd()
 
     logo_text = Text()
@@ -165,7 +178,7 @@ def render_top_banner() -> None:
     info_text = Text()
     info_text.append(f"SecAI CLI {__version__}\n", style="bold #38bdf8")
     info_text.append(f"{user_host} ({llm_info['provider_label']})\n", style="dim white")
-    info_text.append(f"{llm_info['model']}{skill_badge}\n", style="dim white")
+    info_text.append(f"{llm_info['model']}{skill_badge}{tts_badge}\n", style="dim white")
     info_text.append(f"{cwd_short}", style="dim white")
 
     header_grid = Table.grid(padding=(0, 2))
@@ -184,7 +197,7 @@ def render_prompt_frame_and_input() -> str:
     term_width = shutil.get_terminal_size((80, 24)).columns
     line_str = "─" * term_width
 
-    left_hint = " ? kisayollar   /api token   /model   /notes defter   /check tarama"
+    left_hint = " ? kisayollar   /v sesli konus   /ses ayar   /model   /notes   /check"
     right_model = f"{llm_info['model']} "
     spaces = max(1, term_width - len(left_hint) - len(right_model))
     footer = f"[dim]{left_hint}{' ' * spaces}{right_model}[/dim]"
@@ -207,6 +220,9 @@ def show_shortcuts() -> None:
     table.add_column("cmd", style="bold cyan")
     table.add_column("desc", style="white")
 
+    table.add_row("/v veya /talk", "Bas-Konus: Mikrofondan sesli emir ver, SecAI sesli ve yazili yanitlasin")
+    table.add_row("/voice", "Canli Sesli Diyalog (Telsiz Modu): Karsilikli kesintisiz sesli sohbet")
+    table.add_row("/ses veya /tts", "Ses ayarlarini yonet (Ahmet/Emel ses secimi, yazili sohbette ses ac/kapat)")
     table.add_row("/api", "Gemini API Token ekle veya degistir (veya dogrudan AIza... yapistir)")
     table.add_row("/model", "Aktif modeli degistir (Gemini 3 Flash / Pro / Yerel Ollama)")
     table.add_row("/skills", "SecOps yeteneklerini (recon, hardening, detection, ctf) sec veya yeni skill ekle")
@@ -707,6 +723,264 @@ def _stream_reply(messages: list[dict]) -> str:
     return _stream_markdown_from_generator(gen)
 
 
+def manage_voice_settings(inline_arg: str = "") -> None:
+    s = load_settings()
+    arg = inline_arg.strip().lower()
+    if arg in ("on", "ac", "aç", "aktif", "1"):
+        save_settings({"tts_enabled": True})
+        render_top_banner()
+        console.print("[bold green][+][/bold green] Sesli yanit modu acildi (Tum yanitlar seslendirilecek).\n")
+        return
+    if arg in ("off", "kapat", "pasif", "0"):
+        save_settings({"tts_enabled": False})
+        render_top_banner()
+        console.print("[bold green][+][/bold green] Sesli yanit modu kapatildi.\n")
+        return
+    if arg in ("ahmet", "erkek"):
+        save_settings({"tts_voice": "tr-TR-AhmetNeural"})
+        console.print("[bold green][+][/bold green] Asistan sesi: [cyan]Ahmet (Erkek)[/cyan]\n")
+        return
+    if arg in ("emel", "kadin", "kadın"):
+        save_settings({"tts_voice": "tr-TR-EmelNeural"})
+        console.print("[bold green][+][/bold green] Asistan sesi: [cyan]Emel (Kadin)[/cyan]\n")
+        return
+
+    tts_on = bool(s.get("tts_enabled", False))
+    cur_voice = s.get("tts_voice", "tr-TR-AhmetNeural")
+
+    console.print("\n[bold white]SecAI Ses & Konusma Ayarlari[/bold white]")
+    status_str = "[bold green]ACIK[/bold green]" if tts_on else "[dim]KAPALI[/dim]"
+    console.print(f"  [cyan]1[/cyan]  Yazili Sohbette Sesli Yanit (Su an: {status_str})")
+    for idx, (v_id, v_desc) in enumerate(VOICE_PROFILES.items(), start=2):
+        mark = " [bold green][AKTIF][/bold green]" if cur_voice == v_id else ""
+        console.print(f"  [cyan]{idx}[/cyan]  {v_desc}{mark}")
+    console.print("  [cyan]4[/cyan]  Canli Sesli Diyalog (Telsiz Modu — /voice) Baslat")
+    console.print("  [cyan]0[/cyan]  Iptal\n")
+
+    choice = Prompt.ask("Secim", choices=["1", "2", "3", "4", "0"], default="0")
+    if choice == "1":
+        save_settings({"tts_enabled": not tts_on})
+        render_top_banner()
+        new_lbl = "ACILDI" if not tts_on else "KAPATILDI"
+        console.print(f"[bold green][+][/bold green] Sesli yanit modu {new_lbl}.\n")
+    elif choice == "2":
+        save_settings({"tts_voice": "tr-TR-AhmetNeural"})
+        console.print("[bold green][+][/bold green] Asistan sesi: [cyan]Ahmet (Erkek)[/cyan]\n")
+    elif choice == "3":
+        save_settings({"tts_voice": "tr-TR-EmelNeural"})
+        console.print("[bold green][+][/bold green] Asistan sesi: [cyan]Emel (Kadin)[/cyan]\n")
+    elif choice == "4":
+        interactive_voice_loop(session="default")
+
+
+def _run_agent_turn(user_input: str, session: str = "default", force_speak: bool = False) -> str:
+    """
+    Kullanici mesajini alir, AI yanitini akitir, çok adimli ajan dongusunu (notlar, web arama,
+    Shodan intel, SecOps motorlari ve bash komutlari) calistirir ve seslendirme aktifse konusur.
+    """
+    should_speak = force_speak or bool(load_settings().get("tts_enabled", False))
+    expanded_input = expand_file_references(user_input)
+    add_chat_message(session_id=session, role="user", content=expanded_input)
+    current_messages = get_chat_history(session_id=session, limit=40)
+
+    try:
+        last_assistant_reply = _stream_reply(current_messages)
+    except (KeyboardInterrupt, EOFError):
+        console.print("\n[yellow][!] Durduruldu.[/yellow]\n")
+        return ""
+    except OllamaConnectionError as err:
+        console.print(f"\n[bold red][-][/bold red] {err}\n")
+        return ""
+
+    final_reply = last_assistant_reply
+    step_count = 0
+    while last_assistant_reply and step_count < 3:
+        step_count += 1
+        final_reply = last_assistant_reply
+        clean_reply_for_history = strip_internal_blocks(last_assistant_reply)
+        add_chat_message(
+            session_id=session,
+            role="assistant",
+            content=clean_reply_for_history or last_assistant_reply,
+        )
+
+        # Dogal dille not kaydetme istegi varsa otomatik veritabanina kaydet
+        auto_notes = extract_saved_notes(last_assistant_reply)
+        for an in auto_notes:
+            nid = add_note(
+                title=an["title"],
+                content=an["content"],
+                category=an["category"],
+                tags=an["tags"],
+            )
+            console.print(
+                f"[bold green][+][/bold green] Deftere kaydedildi (#{nid} — {an['title']} [{an['category']}])\n"
+            )
+
+        # Dogal dille not guncelleme / silme / markdown disa aktarma
+        for act in extract_note_actions(last_assistant_reply):
+            nid = int(act["id"])
+            if act["action"] == "update-note" and act["content"]:
+                if update_note(note_id=nid, content=act["content"], append=True):
+                    console.print(f"[bold green][+][/bold green] Not #{nid} guncellendi.\n")
+            elif act["action"] == "delete-note":
+                if delete_note(nid):
+                    console.print(f"[bold green][+][/bold green] Not #{nid} silindi.\n")
+            elif act["action"] == "export-note":
+                try:
+                    md_path = export_note_markdown(nid)
+                    console.print(f"[bold green][+][/bold green] Markdown rapor hazir: {md_path}\n")
+                except ValueError:
+                    pass
+
+        # Otomatik Canli Web Aramasi
+        web_queries = extract_web_searches(last_assistant_reply)
+        if web_queries:
+            wq = web_queries[0]
+            console.print(f"[bold cyan][*][/bold cyan] Web'de araniyor: [white]{wq}[/white]")
+            web_report = format_web_results(wq, max_results=6)
+            add_chat_message(
+                session_id=session,
+                role="user",
+                content=(
+                    f"{web_report}\n\n"
+                    "Yukaridaki canli web arama sonuclarini kullanarak kullanicinin sorusunu detayli ve kaynak linkleriyle yanitla (tekrar web-search blogu yazma)."
+                ),
+            )
+            try:
+                updated_messages = get_chat_history(session_id=session, limit=40)
+                last_assistant_reply = _stream_reply(updated_messages)
+                continue
+            except (KeyboardInterrupt, EOFError, OllamaConnectionError):
+                break
+
+        # Otomatik Shodan InternetDB & GeoIP Tehdit Istihbarati Sorgusu
+        intel_queries = extract_intel_queries(last_assistant_reply)
+        if intel_queries:
+            iq = "\n".join(intel_queries)
+            console.print("[bold cyan][*][/bold cyan] Shodan InternetDB & GeoIP tehdit istihbarati sorgulaniyor...")
+            intel_report = format_intel_report(iq, max_ips=8)
+            add_chat_message(
+                session_id=session,
+                role="user",
+                content=(
+                    f"{intel_report}\n\n"
+                    "Yukaridaki gercek Shodan InternetDB ve GeoIP istihbarat sonuclarini kullanarak kullaniciya detayli bir tehdit analizi sun (tekrar intel-lookup blogu yazma)."
+                ),
+            )
+            try:
+                updated_messages = get_chat_history(session_id=session, limit=40)
+                last_assistant_reply = _stream_reply(updated_messages)
+                continue
+            except (KeyboardInterrupt, EOFError, OllamaConnectionError):
+                break
+
+        # Otomatik SecOps Motorlari (baseline, diff, score)
+        secops_acts = extract_secops_actions(last_assistant_reply)
+        if secops_acts:
+            act = secops_acts[0]
+            if act == "baseline":
+                interactive_baseline("default")
+                break
+            elif act == "diff":
+                diff_data = compare_with_baseline()
+                diff_md = format_baseline_diff_report(diff_data)
+                console.print(Padding(Markdown(diff_md, code_theme="monokai"), (0, 1)))
+                add_chat_message(
+                    session_id=session,
+                    role="user",
+                    content=(
+                        f"{diff_md}\n\n"
+                        "Yukaridaki sistem baseline karsilastirma (drift) raporunu degerlendir ve varsa anomalileri acikla (tekrar secops-action blogu yazma)."
+                    ),
+                )
+            elif act in ("score", "harden"):
+                score_data = calculate_hardening_score()
+                score_md = format_hardening_report(score_data)
+                console.print(Padding(Markdown(score_md, code_theme="monokai"), (0, 1)))
+                add_chat_message(
+                    session_id=session,
+                    role="user",
+                    content=(
+                        f"{score_md}\n\n"
+                        "Yukaridaki deterministik CIS guvenlik skoru tablosundaki eksikleri (FAIL/WARN) nasil kapatabilecegimizi ozetle (tekrar secops-action blogu yazma)."
+                    ),
+                )
+            try:
+                updated_messages = get_chat_history(session_id=session, limit=40)
+                last_assistant_reply = _stream_reply(updated_messages)
+                continue
+            except (KeyboardInterrupt, EOFError, OllamaConnectionError):
+                break
+
+        commands = extract_shell_commands(last_assistant_reply)
+        if not commands:
+            if should_speak and last_assistant_reply:
+                speak_text(last_assistant_reply)
+            break
+
+        if should_speak and last_assistant_reply:
+            speak_text(last_assistant_reply)
+
+        next_reply = ""
+        for cmd in commands:
+            cmd_output = prompt_and_execute(cmd)
+            if cmd_output is not None:
+                trimmed_out = cmd_output[:16000]
+                add_chat_message(
+                    session_id=session,
+                    role="user",
+                    content=(
+                        f"[Komut Ciktisi ('{cmd}')]:\n{trimmed_out}\n\n"
+                        "Yukaridaki komut ciktisini analiz et. Eger komut hata verdiyse veya islemi tamamlamak icin 2. bir komut gerekiyorsa yeni ```bash blogu ver; islem tamamlandiysa sonucu tablo/maddelerle ozetle."
+                    ),
+                )
+                try:
+                    updated_messages = get_chat_history(session_id=session, limit=40)
+                    next_reply = _stream_reply(updated_messages)
+                except (KeyboardInterrupt, EOFError, OllamaConnectionError):
+                    next_reply = ""
+        last_assistant_reply = next_reply
+
+    return final_reply
+
+
+def interactive_push_to_talk(session: str = "default") -> str:
+    """Tek seferlik Bas-Konus (mikrofonu dinler, metne cevirir, yanitlar ve sesli konusur)."""
+    wav_path = record_voice_input()
+    if not wav_path:
+        return ""
+    transcript = transcribe_voice(wav_path)
+    if not transcript:
+        console.print("[yellow][!] Konusma anlasilamadi, tekrar deneyin.[/yellow]\n")
+        return ""
+
+    console.print(f"\n[bold cyan][Sen (Sesli)]:[/bold cyan] [bold white]{transcript}[/bold white]")
+    return _run_agent_turn(transcript, session=session, force_speak=True)
+
+
+def interactive_voice_loop(session: str = "default") -> None:
+    """Karsilikli kesintisiz Canli Sesli Diyalog (Telsiz) Modu."""
+    console.print(
+        "\n[bold cyan][*] CANLI SESLI DIYALOG (TELSIZ) MODU AKTIF[/bold cyan]\n"
+        "[dim]Konusup ENTER'a basin, SecAI hem ekranda gosterecek hem de sesli yanitlayacaktir. Cikmak icin 'q' yazin.[/dim]"
+    )
+    while True:
+        reply = interactive_push_to_talk(session=session)
+        try:
+            cont = console.input(
+                "\n[bold cyan][Sesli Diyalog][/bold cyan] Yeni soz icin [bold white]ENTER[/bold white]'a basin [dim](Cikis icin 'q')[/dim]: "
+            ).strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            console.print("\n[dim][*] Sesli diyalog modundan cikildi.[/dim]\n")
+            break
+        if cont in ("q", "quit", "exit", "cikis", "çıkış"):
+            console.print("[dim][*] Sesli diyalog modundan cikildi.[/dim]\n")
+            break
+    let_unused = reply
+    _ = let_unused
+
+
 def run_interactive_menu(status_callback=None) -> None:
     """Antigravity CLI tarzı tam ekran temiz çalışma alanı."""
     session = "default"
@@ -742,6 +1016,22 @@ def run_interactive_menu(status_callback=None) -> None:
             if low in ("/clear", "clear", "temizle"):
                 clear_chat_history(session_id=session)
                 render_top_banner()
+                continue
+
+            if low in ("/v", "/talk", "talk", "konus", "konuş", "dinle"):
+                reply = interactive_push_to_talk(session=session)
+                if reply:
+                    last_assistant_reply = reply
+                continue
+
+            if low in ("/voice", "voice", "telsiz", "sesli mod", "sesli sohbet"):
+                interactive_voice_loop(session=session)
+                continue
+
+            if low in ("/ses", "/tts", "ses", "tts") or low.startswith("/ses ") or low.startswith("/tts "):
+                parts = user_input.split(maxsplit=1)
+                arg = parts[1] if len(parts) > 1 else ""
+                manage_voice_settings(inline_arg=arg)
                 continue
 
             if low in ("api", "key", "/api", "/key") or low.startswith("/api ") or low.startswith("/key ") or low.startswith("api "):
@@ -835,162 +1125,6 @@ def run_interactive_menu(status_callback=None) -> None:
                 console.print(f"\n[bold green][+][/bold green] Deftere kaydedildi (#{note_id} - {title})\n")
                 continue
 
-            # Doğrudan AI Sohbet & Sistem Ajanı akışı (@dosya referanslarini genislet)
-            expanded_input = expand_file_references(user_input)
-            add_chat_message(session_id=session, role="user", content=expanded_input)
-            current_messages = get_chat_history(session_id=session, limit=40)
-
-            try:
-                last_assistant_reply = _stream_reply(current_messages)
-            except (KeyboardInterrupt, EOFError):
-                console.print("\n[yellow][!] Durduruldu.[/yellow]\n")
-                continue
-            except OllamaConnectionError as err:
-                console.print(f"\n[bold red][-][/bold red] {err}\n")
-                continue
-
-            # Cok adimli (Multi-Step) Ajan Dongusu: Komut calistiktan sonra yeni komut gerekirse 3 adima kadar devam edebilir
-            step_count = 0
-            while last_assistant_reply and step_count < 3:
-                step_count += 1
-                clean_reply_for_history = strip_internal_blocks(last_assistant_reply)
-                add_chat_message(
-                    session_id=session,
-                    role="assistant",
-                    content=clean_reply_for_history or last_assistant_reply,
-                )
-
-                # Dogal dille not kaydetme istegi varsa otomatik veritabanina kaydet
-                auto_notes = extract_saved_notes(last_assistant_reply)
-                for an in auto_notes:
-                    nid = add_note(
-                        title=an["title"],
-                        content=an["content"],
-                        category=an["category"],
-                        tags=an["tags"],
-                    )
-                    console.print(
-                        f"[bold green][+][/bold green] Deftere kaydedildi (#{nid} — {an['title']} [{an['category']}])\n"
-                    )
-
-                # Dogal dille not guncelleme / silme / markdown disa aktarma
-                for act in extract_note_actions(last_assistant_reply):
-                    nid = int(act["id"])
-                    if act["action"] == "update-note" and act["content"]:
-                        if update_note(note_id=nid, content=act["content"], append=True):
-                            console.print(f"[bold green][+][/bold green] Not #{nid} guncellendi.\n")
-                    elif act["action"] == "delete-note":
-                        if delete_note(nid):
-                            console.print(f"[bold green][+][/bold green] Not #{nid} silindi.\n")
-                    elif act["action"] == "export-note":
-                        try:
-                            md_path = export_note_markdown(nid)
-                            console.print(f"[bold green][+][/bold green] Markdown rapor hazir: {md_path}\n")
-                        except ValueError:
-                            pass
-
-                # Otomatik Canli Web Aramasi
-                web_queries = extract_web_searches(last_assistant_reply)
-                if web_queries:
-                    wq = web_queries[0]
-                    console.print(f"[bold cyan][*][/bold cyan] Web'de araniyor: [white]{wq}[/white]")
-                    web_report = format_web_results(wq, max_results=6)
-                    add_chat_message(
-                        session_id=session,
-                        role="user",
-                        content=(
-                            f"{web_report}\n\n"
-                            "Yukaridaki canli web arama sonuclarini kullanarak kullanicinin sorusunu detayli ve kaynak linkleriyle yanitla (tekrar web-search blogu yazma)."
-                        ),
-                    )
-                    try:
-                        updated_messages = get_chat_history(session_id=session, limit=40)
-                        last_assistant_reply = _stream_reply(updated_messages)
-                        continue
-                    except (KeyboardInterrupt, EOFError, OllamaConnectionError):
-                        break
-
-                # Otomatik Shodan InternetDB & GeoIP Tehdit Istihbarati Sorgusu
-                intel_queries = extract_intel_queries(last_assistant_reply)
-                if intel_queries:
-                    iq = "\n".join(intel_queries)
-                    console.print("[bold cyan][*][/bold cyan] Shodan InternetDB & GeoIP tehdit istihbarati sorgulaniyor...")
-                    intel_report = format_intel_report(iq, max_ips=8)
-                    add_chat_message(
-                        session_id=session,
-                        role="user",
-                        content=(
-                            f"{intel_report}\n\n"
-                            "Yukaridaki gercek Shodan InternetDB ve GeoIP istihbarat sonuclarini kullanarak kullaniciya detayli bir tehdit analizi sun (tekrar intel-lookup blogu yazma)."
-                        ),
-                    )
-                    try:
-                        updated_messages = get_chat_history(session_id=session, limit=40)
-                        last_assistant_reply = _stream_reply(updated_messages)
-                        continue
-                    except (KeyboardInterrupt, EOFError, OllamaConnectionError):
-                        break
-
-                # Otomatik SecOps Motorlari (baseline, diff, score)
-                secops_acts = extract_secops_actions(last_assistant_reply)
-                if secops_acts:
-                    act = secops_acts[0]
-                    if act == "baseline":
-                        interactive_baseline("default")
-                        break
-                    elif act == "diff":
-                        diff_data = compare_with_baseline()
-                        diff_md = format_baseline_diff_report(diff_data)
-                        console.print(Padding(Markdown(diff_md, code_theme="monokai"), (0, 1)))
-                        add_chat_message(
-                            session_id=session,
-                            role="user",
-                            content=(
-                                f"{diff_md}\n\n"
-                                "Yukaridaki sistem baseline karsilastirma (drift) raporunu degerlendir ve varsa anomalileri acikla (tekrar secops-action blogu yazma)."
-                            ),
-                        )
-                    elif act in ("score", "harden"):
-                        score_data = calculate_hardening_score()
-                        score_md = format_hardening_report(score_data)
-                        console.print(Padding(Markdown(score_md, code_theme="monokai"), (0, 1)))
-                        add_chat_message(
-                            session_id=session,
-                            role="user",
-                            content=(
-                                f"{score_md}\n\n"
-                                "Yukaridaki deterministik CIS guvenlik skoru tablosundaki eksikleri (FAIL/WARN) nasil kapatabilecegimizi ozetle (tekrar secops-action blogu yazma)."
-                            ),
-                        )
-                    try:
-                        updated_messages = get_chat_history(session_id=session, limit=40)
-                        last_assistant_reply = _stream_reply(updated_messages)
-                        continue
-                    except (KeyboardInterrupt, EOFError, OllamaConnectionError):
-                        break
-
-                commands = extract_shell_commands(last_assistant_reply)
-                if not commands:
-                    break
-
-                next_reply = ""
-                for cmd in commands:
-                    cmd_output = prompt_and_execute(cmd)
-                    if cmd_output is not None:
-                        trimmed_out = cmd_output[:16000]
-                        add_chat_message(
-                            session_id=session,
-                            role="user",
-                            content=(
-                                f"[Komut Ciktisi ('{cmd}')]:\n{trimmed_out}\n\n"
-                                "Yukaridaki komut ciktisini analiz et. Eger komut hata verdiyse veya islemi tamamlamak icin 2. bir komut gerekiyorsa yeni ```bash blogu ver; islem tamamlandiysa sonucu tablo/maddelerle ozetle."
-                            ),
-                        )
-                        try:
-                            updated_messages = get_chat_history(session_id=session, limit=40)
-                            next_reply = _stream_reply(updated_messages)
-                        except (KeyboardInterrupt, EOFError, OllamaConnectionError):
-                            next_reply = ""
-                last_assistant_reply = next_reply
+            last_assistant_reply = _run_agent_turn(user_input, session=session, force_speak=False)
     finally:
         _save_readline_history(history_file)

@@ -46,6 +46,10 @@ from secai.core.skills import (  # noqa: E402
     list_all_skills,
     set_active_skill,
 )
+from secai.core.voice import (  # noqa: E402
+    VOICE_PROFILES,
+    clean_text_for_speech,
+)
 
 
 class SecAITestSuite(unittest.TestCase):
@@ -182,6 +186,19 @@ class SecAITestSuite(unittest.TestCase):
         self.assertGreater(len(score_res["checks"]), 0)
         score_md = format_hardening_report(score_res)
         self.assertIn("100", score_md)
+
+    def test_voice_speech_cleaner(self):
+        self.assertIn("tr-TR-AhmetNeural", VOICE_PROFILES)
+        raw_md = (
+            "### Port Analizi\n"
+            "| Port | Durum |\n| :--- | :--- |\n| 1080 | Acik |\n"
+            "**127.0.0.1** uzerinde `secai` guvenli calisiyor.\n"
+            "```bash\nss -tulnp\n```"
+        )
+        cleaned = clean_text_for_speech(raw_md)
+        self.assertIn("localhost", cleaned)
+        self.assertIn("Sekay", cleaned)
+        self.assertNotIn("ss -tulnp", cleaned)
 
 
 if __name__ == "__main__":

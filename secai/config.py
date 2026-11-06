@@ -10,6 +10,7 @@ APP_NAME = "secai"
 DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 DEFAULT_OLLAMA_MODEL = os.environ.get("SECAI_MODEL", "qwen2.5-coder:7b")
 DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
+DEFAULT_TTS_VOICE = "tr-TR-AhmetNeural"
 
 
 def get_data_dir() -> Path:
@@ -61,6 +62,9 @@ def load_settings() -> dict:
         "gemini_model": DEFAULT_GEMINI_MODEL,
         "ollama_model": DEFAULT_OLLAMA_MODEL,
         "ollama_url": DEFAULT_OLLAMA_URL,
+        "tts_enabled": False,
+        "tts_voice": DEFAULT_TTS_VOICE,
+        "tts_rate": "+8%",
     }
     if path.exists():
         try:
