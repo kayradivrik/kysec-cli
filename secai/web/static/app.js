@@ -1,4 +1,4 @@
-// SecAI — ChatGPT/Gemini Tarzi Coklu Oturum & Kalici Bellek React Arayuzu
+// SecAI Web UI — Modern ChatGPT / Claude Tarzi React Arayuzu
 import React, { useEffect, useRef, useState } from "https://esm.sh/react@18.3.1";
 import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
 import htm from "https://esm.sh/htm@3.1.1";
@@ -13,7 +13,7 @@ function api(path, opts = {}) {
   });
 }
 
-// --- Guvenli Minimal Markdown ---
+// Markdown ayrıştırma
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const HIDDEN = /```(?:save-note|update-note|delete-note|export-note|web-search|intel-lookup|secops-action|remember|forget)\s*\n[\s\S]*?(?:```|$)/gi;
 
@@ -71,7 +71,7 @@ function renderMarkdown(src) {
 
 const Md = ({ text }) => html`<div class="md" dangerouslySetInnerHTML=${{ __html: renderMarkdown(text) }} />`;
 
-// --- ChatGPT Tarzi Coklu Oturumlu Sohbet ---
+// --- Sohbet Bileseni ---
 function Chat() {
   const [sessions, setSessions] = useState([]);
   const [currentSession, setCurrentSession] = useState("web");
@@ -99,9 +99,7 @@ function Chat() {
       .catch(() => {});
   };
 
-  useEffect(() => {
-    loadSessions();
-  }, []);
+  useEffect(() => { loadSessions(); }, []);
 
   useEffect(() => {
     if (currentSession) {
@@ -109,7 +107,7 @@ function Chat() {
     }
   }, [currentSession]);
 
-  useEffect(() => endRef.current?.scrollIntoView({ block: "end" }), [msgs]);
+  useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), [msgs]);
 
   const newChat = async () => {
     const newId = `chat_${Date.now().toString(36)}`;
@@ -174,8 +172,13 @@ function Chat() {
 
   return html`
     <div class="chat-layout">
+      <!-- SIDEBAR -->
       <div class="sidebar">
-        <button class="new-btn" onClick=${newChat}>+ Yeni Sohbet</button>
+        <div class="sidebar-header">
+          <button class="new-btn" onClick=${newChat}>
+            <span style=${{ fontSize: "16px" }}>+</span> Yeni Sohbet
+          </button>
+        </div>
         <div class="session-list">
           ${sessions.map(
             (s) => html`
@@ -184,9 +187,7 @@ function Chat() {
                 class=${"session-item " + (s.id === currentSession ? "active" : "")}
                 onClick=${() => setCurrentSession(s.id)}
               >
-                <span style=${{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  ${s.title}
-                </span>
+                <span class="title">${s.title}</span>
                 ${s.id !== "web" &&
                 html`<button class="del" title="Sil" onClick=${(e) => deleteSession(e, s.id)}>×</button>`}
               </div>`
@@ -194,32 +195,51 @@ function Chat() {
         </div>
       </div>
 
+      <!-- CHAT MAIN -->
       <div class="chat-area">
-        <main>
-          ${msgs.length === 0 &&
-          html`<p class="empty">Bu sohbet yeni basladi. ChatGPT gibi konusabilir, soru sorabilir veya sistem durumunu analiz ettirebilirsin.</p>`}
-          ${msgs.map(
-            (m, i) => html`
-              <div class=${"msg " + m.role} key=${i}>
-                <div class="who">${m.role === "user" ? "sen" : "secai"}</div>
-                ${m.role === "user" ? html`<div>${m.content}</div>` : html`<${Md} text=${m.content || "..."} />`}
-              </div>`
-          )}
-          <div ref=${endRef} />
+        <main class="chat-messages">
+          <div class="chat-container">
+            ${msgs.length === 0 &&
+            html`
+              <div class="empty-state">
+                <div style=${{ fontSize: "28px", marginBottom: "12px" }}>🛡️</div>
+                <h3 style=${{ color: "#fff", marginBottom: "8px" }}>SecAI ile nasıl yardımcı olabilirim?</h3>
+                <p>Güvenlik denetimleri yapabilir, portları inceleyebilir, dosya okutabilir veya genel sohbet edebilirsin.</p>
+              </div>`}
+            ${msgs.map(
+              (m, i) => html`
+                <div class=${"msg " + m.role} key=${i} style=${{ marginBottom: "24px" }}>
+                  <div class="avatar">${m.role === "user" ? "K" : "S"}</div>
+                  <div class="msg-body">
+                    <div class="who">${m.role === "user" ? "Sen" : "SecAI"}</div>
+                    ${m.role === "user"
+                      ? html`<div class="content">${m.content}</div>`
+                      : html`<${Md} text=${m.content || "Düşünüyor..."} />`}
+                  </div>
+                </div>`
+            )}
+            <div ref=${endRef} />
+          </div>
         </main>
-        <form onSubmit=${send}>
-          <input
-            value=${input}
-            onInput=${(e) => setInput(e.target.value)}
-            placeholder=${busy ? "dusunuyor..." : "> mesaj yaz (ornek: 'adim Kayra', 'acik portlari analiz et')"}
-            autofocus
-          />
-        </form>
+
+        <div class="input-wrapper">
+          <form onSubmit=${send} class="input-box">
+            <input
+              value=${input}
+              onInput=${(e) => setInput(e.target.value)}
+              placeholder=${busy ? "SecAI düşünüyor..." : "Mesajınızı yazın..."}
+              autofocus
+            />
+            <button class="send-btn" type="submit" disabled=${busy || !input.trim()}>
+              ↑
+            </button>
+          </form>
+        </div>
       </div>
     </div>`;
 }
 
-// --- Kalici Profil & Bellek Sekmesi (ChatGPT Memory) ---
+// --- Bellek Bileseni ---
 function Memories() {
   const [mems, setMems] = useState([]);
 
@@ -235,27 +255,27 @@ function Memories() {
   };
 
   return html`
-    <main>
-      <h3 style=${{ marginBottom: "8px" }}>SecAI Kalici Profil Bellekleri (ChatGPT Memory)</h3>
-      <p class="empty" style=${{ marginBottom: "16px" }}>
-        Sohbet sirasinda paylastigin bilgiler (donanimin, adin, projelerin vb.) burada saklanir ve her sohbette dogal olarak hatirlanir.
+    <div class="view-container">
+      <h2 style=${{ color: "#fff", marginBottom: "6px" }}>Kişisel Profil & Kalıcı Bellek</h2>
+      <p style=${{ color: "var(--text-muted)", marginBottom: "24px" }}>
+        ChatGPT Memory tarzı: Senin donanımını, sistemini veya paylaştığın tercihleri hatırlar; tüm sohbetlerde arka planda bağlam kurar.
       </p>
-      ${mems.length === 0 && html`<p class="empty">Henuz kaydedilmis kisisel bir bellek yok. Sohbette 'adim Kayra' veya 'bunu aklinda tut' dersen otomatik kaydeder.</p>`}
+      ${mems.length === 0 && html`<div class="empty-state">Henüz hafızaya kaydedilmiş bir bilgi yok. Sohbette 'benim adım...' veya 'aklında tut...' dersen otomatik kaydeder.</div>`}
       ${mems.map(
         (m) => html`
-          <div class="mem-card" key=${m.id}>
+          <div class="card" key=${m.id} style=${{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
-              <b>${m.key}</b>
-              <div style=${{ marginTop: "4px" }}>${m.fact}</div>
-              <small class="empty">${m.created_at}</small>
+              <div style=${{ color: "var(--accent)", fontWeight: "600", fontSize: "13px", marginBottom: "4px" }}>${m.key}</div>
+              <div style=${{ color: "#f8fafc", fontSize: "14.5px" }}>${m.fact}</div>
+              <small style=${{ color: "var(--text-dim)", marginTop: "4px", display: "block" }}>${m.created_at}</small>
             </div>
-            <button class="del-btn" title="Bellekten Sil" onClick=${() => del(m.key)}>×</button>
+            <button class="session-item del" style=${{ display: "block", fontSize: "18px" }} title="Sil" onClick=${() => del(m.key)}>×</button>
           </div>`
       )}
-    </main>`;
+    </div>`;
 }
 
-// --- Defter Sekmesi ---
+// --- Defter Bileseni ---
 function Notes() {
   const [notes, setNotes] = useState([]);
   const [open, setOpen] = useState(null);
@@ -266,28 +286,41 @@ function Notes() {
 
   if (open) {
     return html`
-      <main>
-        <button class="back" onClick=${() => setOpen(null)}>← geri</button>
-        <h3>#${open.id} ${open.title}</h3>
-        <p class="empty">${open.category} · ${open.tags || "-"} · ${open.created_at}</p>
-        <${Md} text=${open.content} />
-      </main>`;
+      <div class="view-container">
+        <button class="new-btn" style=${{ width: "auto", display: "inline-flex", marginBottom: "20px" }} onClick=${() => setOpen(null)}>
+          ← Notlara Dön
+        </button>
+        <h2 style=${{ color: "#fff", marginBottom: "8px" }}>#${open.id} ${open.title}</h2>
+        <div style=${{ color: "var(--text-dim)", marginBottom: "20px", fontSize: "13px" }}>
+          ${open.category} · ${open.tags || "etiketsiz"} · ${open.created_at}
+        </div>
+        <div class="card">
+          <${Md} text=${open.content} />
+        </div>
+      </div>`;
   }
 
   return html`
-    <main>
-      ${notes.length === 0 && html`<p class="empty">Defter bos.</p>`}
+    <div class="view-container">
+      <h2 style=${{ color: "#fff", marginBottom: "6px" }}>Vaka & Proje Defteri</h2>
+      <p style=${{ color: "var(--text-muted)", marginBottom: "24px" }}>
+        Kaydettiğin raporlar, güvenlik analizleri ve proje notları.
+      </p>
+      ${notes.length === 0 && html`<div class="empty-state">Defter henüz boş.</div>`}
       ${notes.map(
         (n) => html`
-          <div class="row" key=${n.id} onClick=${() => api(`/api/notes/${n.id}`).then((r) => r.json()).then(setOpen)}>
-            <span>#${n.id} ${n.title}</span>
-            <small>${n.category} · ${n.created_at}</small>
+          <div class="card" key=${n.id} style=${{ cursor: "pointer" }} onClick=${() => api(`/api/notes/${n.id}`).then((r) => r.json()).then(setOpen)}>
+            <div style=${{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style=${{ fontWeight: "600", color: "#f1f5f9" }}>#${n.id} ${n.title}</span>
+              <span class="model-tag">${n.category}</span>
+            </div>
+            <div style=${{ color: "var(--text-dim)", fontSize: "12px", marginTop: "6px" }}>${n.created_at}</div>
           </div>`
       )}
-    </main>`;
+    </div>`;
 }
 
-// --- Guvenlik Skoru Sekmesi ---
+// --- Skor Bileseni ---
 function Score() {
   const [data, setData] = useState(null);
 
@@ -295,20 +328,34 @@ function Score() {
     api("/api/score").then((r) => r.json()).then(setData).catch(() => {});
   }, []);
 
-  if (!data) return html`<main><p class="empty">hesaplaniyor...</p></main>`;
+  if (!data) return html`<div class="view-container"><div class="empty-state">Güvenlik skoru hesaplanıyor...</div></div>`;
 
   return html`
-    <main>
-      <div class="score">${data.score} / ${data.max_score}</div>
-      <p class="empty" style=${{ marginBottom: "16px" }}>${data.grade}</p>
+    <div class="view-container">
+      <div class="score-banner">
+        <div style=${{ color: "var(--accent)", fontSize: "13px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "1px" }}>
+          CIS Linux Güvenlik Skoru
+        </div>
+        <div class="score-num">${data.score} <span style=${{ fontSize: "20px", color: "var(--text-dim)", fontWeight: "400" }}>/ ${data.max_score}</span></div>
+        <div style=${{ color: "var(--text-muted)", marginTop: "6px" }}>Seviye: <b>${data.grade}</b></div>
+      </div>
+
+      <h3 style=${{ color: "#fff", marginBottom: "14px" }}>Denetim Kalemleri</h3>
       ${data.checks.map(
         (c, i) => html`
-          <div class="row" key=${i} style=${{ cursor: "default" }}>
-            <span><span class=${c.status.toLowerCase()}>${c.status}</span> ${c.name}</span>
-            <small>${c.points}</small>
+          <div class="card" key=${i}>
+            <div style=${{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+              <span style=${{ fontWeight: "600" }}>${c.name}</span>
+              <span class=${c.status.toLowerCase()}>${c.status} (${c.points})</span>
+            </div>
+            <div style=${{ color: "var(--text-dim)", fontSize: "13px" }}>Mevcut Değer: <code style=${{ color: "#cbd5e1" }}>${c.current}</code></div>
+            ${c.status !== "PASS" && html`
+              <div style=${{ marginTop: "8px", fontSize: "13px", color: "var(--text-muted)" }}>
+                Öneri / Komut: <code>${c.remediation}</code>
+              </div>`}
           </div>`
       )}
-    </main>`;
+    </div>`;
 }
 
 // --- Ana Uygulama ---
@@ -321,21 +368,26 @@ function App() {
   }, []);
 
   const tabs = [
-    ["chat", "sohbet"],
-    ["memory", "bellek (memory)"],
-    ["notes", "defter"],
-    ["score", "skor"],
+    ["chat", "Sohbet"],
+    ["memory", "Bellek"],
+    ["notes", "Defter"],
+    ["score", "Güvenlik Skoru"],
   ];
 
   return html`
     <div class="app">
       <header>
-        <div><b>secai</b> <span>${status ? `${status.version} · ${status.model}` : ""}</span></div>
+        <div class="brand">
+          <div class="logo-badge">S</div>
+          <span class="brand-title">secai</span>
+          <span class="model-tag">${status ? `${status.model}` : "bağlanıyor..."}</span>
+        </div>
         <nav>
           ${tabs.map(([k, label]) => html`
             <button key=${k} class=${tab === k ? "on" : ""} onClick=${() => setTab(k)}>${label}</button>`)}
         </nav>
       </header>
+
       ${tab === "chat" && html`<${Chat} />`}
       ${tab === "memory" && html`<${Memories} />`}
       ${tab === "notes" && html`<${Notes} />`}
