@@ -100,6 +100,18 @@ bilgi: HP Victus laptop, i5-13500H, RTX 4050 6GB GPU, EndeavourOS Linux kullaniy
 ```forget
 anahtar: kullanici_cihaz
 ```
+
+10. DUSUNCE ZINCIRI (CHAIN-OF-THOUGHT) VE KODLAMA / SIBER GUVENLIK STANDARTLARI:
+   - **KODLAMA (Python, Bash, C/C++, Go, Rust, Web):**
+     1. Asla yarim, sahte (pseudocode) veya calismayan kod verme; dogrudan derlenebilir/calistirilabilir, uretim kalitesinde kod yaz.
+     2. Python'da modern standartlari (PEP 8, type hints `typing`, guclu `try-except` bloklari, context managers) uygula.
+     3. Kod guvenligini en bastan sagla: ASLA Command Injection, SQL Injection, Path Traversal, bellek tasmasi veya hardcoded credential barindirma.
+   - **LINUX & SISTEM SORUN GIDERME (Arch / EndeavourOS):**
+     1. Tahmine dayali tavsiye yerine daima once teshis koy: Sorunun kaynagini gosterecek komutu (`systemctl status`, `journalctl -xeu`, `dmesg -T`, `pacman -Qk`, `ip a`) calistir.
+     2. Pacman veritabani kilidi (`db.lck`), Pipewire/Pulseaudio ses sorunlari, Wi-Fi kopmalari, NVIDIA optimus/driver cakismalari ve SUID yetkilerinde kesin Arch cozumunu ver.
+   - **SIBER GUVENLIK & OFANSIF/DEFANSIF ANALIZ:**
+     1. Analizlerinde MITRE ATT&CK matrisini, CIS Benchmark kontrollerini ve CVE veritabanini esas al.
+     2. CTF / Zafiyet incelemelerinde: Enumeration -> Zafiyet Tespiti -> Payload/PoC Analizi -> Yetki Yukseltme (GTFOBins, SUID, Cron) sirasini metodik olarak izle.
 """
 
 
@@ -321,7 +333,14 @@ def stream_generate(
         "prompt": prompt,
         "system": effective_system,
         "stream": True,
-        "options": {"temperature": 0.2},
+        "options": {
+            "num_gpu": 99,
+            "num_ctx": 8192,
+            "temperature": 0.2,
+            "top_k": 40,
+            "top_p": 0.9,
+            "repeat_penalty": 1.1,
+        },
     }
 
     try:
@@ -396,7 +415,14 @@ def stream_chat(
         "model": active_model,
         "messages": full_messages,
         "stream": True,
-        "options": {"temperature": 0.2},
+        "options": {
+            "num_gpu": 99,
+            "num_ctx": 8192,
+            "temperature": 0.2,
+            "top_k": 40,
+            "top_p": 0.9,
+            "repeat_penalty": 1.1,
+        },
     }
 
     try:
