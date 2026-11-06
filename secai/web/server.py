@@ -21,11 +21,21 @@ from secai.core.database import (
     add_chat_message,
     add_note,
     clear_chat_history,
+    create_session,
+    delete_memory,
+    delete_session,
     get_chat_history,
     get_note,
+    list_memories,
     list_notes,
+    list_sessions,
+    save_memory,
 )
-from secai.core.executor import extract_saved_notes, strip_internal_blocks
+from secai.core.executor import (
+    extract_memory_actions,
+    extract_saved_notes,
+    strip_internal_blocks,
+)
 from secai.core.llm import OllamaConnectionError, stream_chat
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -107,8 +117,22 @@ def make_handler(token: str):
                     {"version": __version__, "provider": info["provider_label"], "model": info["model"]}
                 )
 
+            if path == "/api/sessions":
+                s_list = list_sessions()
+                if not s_list:
+                    create_session(WEB_SESSION, "Genel Sohbet")
+                    s_list = list_sessions()
+                return self._send_json(s_list)
+
             if path == "/api/history":
-                return self._send_json(get_chat_history(session_id=WEB_SESSION, limit=40))
+                query_sess = urlparse(self.path).query
+                sess_id = WEB_SESSION
+                if "session=" in query_sess:
+                    sess_id = query_sess.split("session=")[1].split("&")[0].strip() or WEB_SESSION
+                return self._send_json(get_chat_history(session_id=sess_id, limit=60))
+
+            if path == "/api/memories":
+                return self._send_json(list_memories())
 
             if path == "/api/notes":
                 rows = list_notes()
@@ -141,21 +165,45 @@ def make_handler(token: str):
                 return self._send_json({"error": "yetkisiz"}, 401)
 
             if path == "/api/clear":
-                clear_chat_history(session_id=WEB_SESSION)
+                data = self._read_json()
+                s_id = data.get("session", WEB_SESSION)
+                clear_chat_history(session_id=s_id)
+                return self._send_json({"ok": True})
+
+            if path == "/api/sessions/new":
+                data = self._read_json()
+                s_id = data.get("id") or f"chat_{secrets.token_hex(4)}"
+                title = data.get("title") or "Yeni Sohbet"
+                create_session(s_id, title)
+                return self._send_json({"id": s_id, "title": title})
+
+            if path.startswith("/api/sessions/delete"):
+                data = self._read_json()
+                s_id = data.get("id", "")
+                if s_id:
+                    delete_session(s_id)
+                return self._send_json({"ok": True})
+
+            if path.startswith("/api/memories/delete"):
+                data = self._read_json()
+                key = data.get("key", "")
+                if key:
+                    delete_memory(key)
                 return self._send_json({"ok": True})
 
             if path == "/api/chat":
                 data = self._read_json()
                 message = str(data.get("message", "")).strip()
+                s_id = str(data.get("session", WEB_SESSION)).strip() or WEB_SESSION
                 if not message:
                     return self._send_json({"error": "mesaj bos"}, 400)
-                return self._stream_chat(message)
+                return self._stream_chat(message, s_id)
 
             return self._send_json({"error": "bulunamadi"}, 404)
 
-        def _stream_chat(self, message: str) -> None:
-            add_chat_message(session_id=WEB_SESSION, role="user", content=message)
-            history = get_chat_history(session_id=WEB_SESSION, limit=40)
+        def _stream_chat(self, message: str, session_id: str) -> None:
+            add_chat_message(session_id=session_id, role="user", content=message)
+            history = get_chat_history(session_id=session_id, limit=60)
 
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -179,10 +227,22 @@ def make_handler(token: str):
                 return
 
             add_chat_message(
-                session_id=WEB_SESSION,
+                session_id=session_id,
                 role="assistant",
                 content=strip_internal_blocks(reply) or reply,
             )
+
+            # ChatGPT Memory gibi bellek kaydetme/silme
+            for m_act in extract_memory_actions(reply):
+                if m_act["action"] == "remember":
+                    save_memory(key=m_act["key"], fact=m_act["fact"])
+                    try:
+                        self.wfile.write(f"\n\n_🧠 Belleğe kaydedildi: {m_act['fact']}_".encode("utf-8"))
+                        self.wfile.flush()
+                    except Exception:
+                        pass
+                elif m_act["action"] == "forget":
+                    delete_memory(m_act["key"])
 
             # Dogal dille "not ekle" istegi geldiyse deftere kaydet
             saved = []

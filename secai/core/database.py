@@ -93,6 +93,27 @@ def init_db() -> None:
             );
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS memories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT UNIQUE NOT NULL,
+                fact TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'auto',
+                created_at TEXT NOT NULL
+            );
+            """
+        )
 
 
 def backup_database(target_dir: Optional[Path] = None) -> Path:
@@ -420,6 +441,7 @@ def get_case_with_entries(
 
 def add_chat_message(session_id: str, role: str, content: str) -> int:
     init_db()
+    clean_session = session_id.strip() or "default"
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_connection() as conn:
         cursor = conn.execute(
@@ -427,12 +449,24 @@ def add_chat_message(session_id: str, role: str, content: str) -> int:
             INSERT INTO chat_history (session_id, role, content, created_at)
             VALUES (?, ?, ?, ?)
             """,
-            (session_id.strip(), role.strip(), content, now),
+            (clean_session, role.strip(), content, now),
         )
-        return cursor.lastrowid
+        msg_id = cursor.lastrowid
+
+        # Oturum tablosunda yoksa olustur veya updated_at guncelle
+        first_line = content.strip().splitlines()[0][:45] if content.strip() else "Yeni Sohbet"
+        conn.execute(
+            """
+            INSERT INTO sessions (id, title, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at
+            """,
+            (clean_session, first_line, now, now),
+        )
+        return msg_id
 
 
-def get_chat_history(session_id: str = "default", limit: int = 40) -> list[dict]:
+def get_chat_history(session_id: str = "default", limit: int = 100) -> list[dict]:
     init_db()
     with get_connection() as conn:
         rows = conn.execute(
@@ -459,4 +493,99 @@ def clear_chat_history(session_id: str = "default") -> int:
         cursor = conn.execute(
             "DELETE FROM chat_history WHERE session_id = ?", (session_id.strip(),)
         )
+        conn.execute("DELETE FROM sessions WHERE id = ?", (session_id.strip(),))
         return cursor.rowcount
+
+
+def list_sessions() -> list[dict]:
+    init_db()
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT s.id, s.title, s.created_at, s.updated_at,
+                   COUNT(c.id) AS msg_count
+            FROM sessions s
+            LEFT JOIN chat_history c ON s.id = c.session_id
+            GROUP BY s.id
+            ORDER BY s.updated_at DESC
+            """
+        ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "title": r["title"],
+                "created_at": r["created_at"],
+                "updated_at": r["updated_at"],
+                "msg_count": r["msg_count"],
+            }
+            for r in rows
+        ]
+
+
+def create_session(session_id: str, title: str = "Yeni Sohbet") -> str:
+    init_db()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO sessions (id, title, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET title = excluded.title
+            """,
+            (session_id.strip(), title.strip() or "Yeni Sohbet", now, now),
+        )
+        return session_id.strip()
+
+
+def delete_session(session_id: str) -> bool:
+    init_db()
+    with get_connection() as conn:
+        conn.execute("DELETE FROM chat_history WHERE session_id = ?", (session_id.strip(),))
+        c = conn.execute("DELETE FROM sessions WHERE id = ?", (session_id.strip(),))
+        return c.rowcount > 0
+
+
+# ---------- KISISEL PROFIL & BELLEK (ChatGPT Memory Tarzi) ----------
+
+def save_memory(key: str, fact: str, source: str = "auto") -> bool:
+    init_db()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO memories (key, fact, source, created_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET fact = excluded.fact, created_at = excluded.created_at
+            """,
+            (key.strip().lower(), fact.strip(), source, now),
+        )
+        return True
+
+
+def delete_memory(key: str) -> bool:
+    init_db()
+    with get_connection() as conn:
+        c = conn.execute("DELETE FROM memories WHERE key = ? OR id = ?", (key.strip().lower(), key.strip()))
+        return c.rowcount > 0
+
+
+def list_memories() -> list[dict]:
+    init_db()
+    with get_connection() as conn:
+        rows = conn.execute("SELECT * FROM memories ORDER BY id ASC").fetchall()
+        return [
+            {"id": r["id"], "key": r["key"], "fact": r["fact"], "source": r["source"], "created_at": r["created_at"]}
+            for r in rows
+        ]
+
+
+def get_memory_context() -> str:
+    """ChatGPT Memory gibi kullanici hakkinda ogrenilen profil/bellek bilgilerini dondurur."""
+    mems = list_memories()
+    if not mems:
+        return ""
+    lines = ["[KULLANICI PROFILI VE HATIRLANAN BILGILER (KALICI BELLEK)]:"]
+    for m in mems:
+        lines.append(f"  • {m['fact']} (anahtar: {m['key']})")
+    lines.append("Bu bilgileri dogal olarak hatirla ve kullanicinin kimligine/tercihlerine uygun cevap ver.")
+    return "\n".join(lines)

@@ -9,7 +9,7 @@ from secai.config import (
     get_active_llm_info,
     save_settings,
 )
-from secai.core.database import get_casebook_context
+from secai.core.database import get_casebook_context, get_memory_context
 from secai.core.skills import get_active_skill
 
 AUDIT_SYSTEM_PROMPT = """Sen bir SecOps Analisti ve Zafiyet Arastirmacisisin.
@@ -87,6 +87,16 @@ diff
    - Kullanici bilgisayarinin guvenlik sikilastirma puanini (0-100 CIS Hardening Score) hesaplamak isterse ("guvenlik puanimi hesapla", "sistemim ne kadar guvenli puanla", "hardening skoru cikar"):
 ```secops-action
 score
+```
+9. KISISEL PROFIL & BELLEK YONETIMI (ChatGPT Memory):
+   - Kullanici kendisi hakkinda onemli bir bilgi, tercih, donanim veya kisisel detay paylastiginda ("benim adim Kayra", "RTX 4050 ekran kartim var", "Dogus Uni ogrencisiyim", "bunu unutma", "aklında tut"), bu bilgiyi hatirlamak icin yanitina su blogu ekle:
+```remember
+anahtar: kullanici_cihaz
+bilgi: HP Victus laptop, i5-13500H, RTX 4050 6GB GPU, EndeavourOS Linux kullaniyor
+```
+   - Kullanici bir bilgiyi unutmani istediginde ("bunu unut", "su bilgiyi hafizandan sil"):
+```forget
+anahtar: kullanici_cihaz
 ```
 """
 
@@ -353,10 +363,12 @@ def stream_chat(
             break
 
     casebook_ctx = get_casebook_context(user_query=latest_user_query, limit=10)
+    memory_ctx = get_memory_context()
+    mem_block = f"\n\n{memory_ctx}" if memory_ctx else ""
     active_skill = get_active_skill()
     skill_block = f"\n\n{active_skill['instructions']}" if active_skill else ""
     enriched_system_prompt = (
-        f"{system_prompt}{skill_block}\n\n{get_runtime_context()}\n\n{casebook_ctx}"
+        f"{system_prompt}{skill_block}\n\n{get_runtime_context()}{mem_block}\n\n{casebook_ctx}"
     )
 
     if llm_info["provider"] == "gemini" and llm_info["api_key"]:

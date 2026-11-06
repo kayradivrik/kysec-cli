@@ -67,14 +67,46 @@ def extract_shell_commands(markdown_text: str) -> list[str]:
 
 
 def strip_internal_blocks(markdown_text: str) -> str:
-    """Ekranda kullaniciya gosterilmemesi gereken arka plan not, web arama ve secops bloklarini temizler."""
+    """Ekranda kullaniciya gosterilmemesi gereken arka plan not, web arama, bellek ve secops bloklarini temizler."""
     cleaned = re.sub(
-        r"```(?:save-note|update-note|delete-note|export-note|web-search|intel-lookup|secops-action)\s*\n.*?(?:```|$)",
+        r"```(?:save-note|update-note|delete-note|export-note|web-search|intel-lookup|secops-action|remember|forget)\s*\n.*?(?:```|$)",
         "",
         markdown_text,
         flags=re.DOTALL | re.IGNORECASE,
     )
     return cleaned.strip()
+
+
+def extract_memory_actions(markdown_text: str) -> list[dict[str, str]]:
+    """Model yanitindaki remember ve forget bellek bloklarini ayiklar."""
+    actions: list[dict[str, str]] = []
+    # remember bloklari
+    rem_pat = re.compile(r"```remember\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
+    for block in rem_pat.findall(markdown_text):
+        key = ""
+        fact_lines: list[str] = []
+        for line in block.strip().splitlines():
+            clean = line.strip()
+            if not clean:
+                continue
+            if clean.lower().startswith("anahtar:") or clean.lower().startswith("key:"):
+                key = clean.split(":", 1)[1].strip()
+            elif clean.lower().startswith("bilgi:") or clean.lower().startswith("fact:"):
+                fact_lines.append(clean.split(":", 1)[1].strip())
+            else:
+                fact_lines.append(clean)
+        fact_text = " ".join(fact_lines).strip()
+        if fact_text:
+            actions.append({"action": "remember", "key": key or fact_text[:20], "fact": fact_text})
+
+    # forget bloklari
+    forg_pat = re.compile(r"```forget\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
+    for block in forg_pat.findall(markdown_text):
+        for line in block.strip().splitlines():
+            clean = line.strip()
+            if clean:
+                actions.append({"action": "forget", "key": clean})
+    return actions
 
 
 def extract_intel_queries(markdown_text: str) -> list[str]:

@@ -1,4 +1,4 @@
-// SecAI — sade React arayuzu (derleme gerektirmez: React + htm, ESM)
+// SecAI — ChatGPT/Gemini Tarzi Coklu Oturum & Kalici Bellek React Arayuzu
 import React, { useEffect, useRef, useState } from "https://esm.sh/react@18.3.1";
 import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
 import htm from "https://esm.sh/htm@3.1.1";
@@ -13,10 +13,9 @@ function api(path, opts = {}) {
   });
 }
 
-// --- Guvenli, minimal Markdown (HTML once kacislanir, model ciktisi asla ham HTML olarak basilmaz) ---
+// --- Guvenli Minimal Markdown ---
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-const HIDDEN = /```(?:save-note|update-note|delete-note|export-note|web-search|intel-lookup|secops-action)\s*\n[\s\S]*?(?:```|$)/gi;
+const HIDDEN = /```(?:save-note|update-note|delete-note|export-note|web-search|intel-lookup|secops-action|remember|forget)\s*\n[\s\S]*?(?:```|$)/gi;
 
 function inline(s) {
   return s
@@ -72,18 +71,68 @@ function renderMarkdown(src) {
 
 const Md = ({ text }) => html`<div class="md" dangerouslySetInnerHTML=${{ __html: renderMarkdown(text) }} />`;
 
-// --- Sohbet ---
+// --- ChatGPT Tarzi Coklu Oturumlu Sohbet ---
 function Chat() {
+  const [sessions, setSessions] = useState([]);
+  const [currentSession, setCurrentSession] = useState("web");
   const [msgs, setMsgs] = useState([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const endRef = useRef(null);
 
+  const loadSessions = () => {
+    api("/api/sessions")
+      .then((r) => r.json())
+      .then((data) => {
+        setSessions(data);
+        if (data.length > 0 && !data.some((s) => s.id === currentSession)) {
+          setCurrentSession(data[0].id);
+        }
+      })
+      .catch(() => {});
+  };
+
+  const loadHistory = (sessId) => {
+    api(`/api/history?session=${sessId}`)
+      .then((r) => r.json())
+      .then(setMsgs)
+      .catch(() => {});
+  };
+
   useEffect(() => {
-    api("/api/history").then((r) => r.json()).then(setMsgs).catch(() => {});
+    loadSessions();
   }, []);
 
+  useEffect(() => {
+    if (currentSession) {
+      loadHistory(currentSession);
+    }
+  }, [currentSession]);
+
   useEffect(() => endRef.current?.scrollIntoView({ block: "end" }), [msgs]);
+
+  const newChat = async () => {
+    const newId = `chat_${Date.now().toString(36)}`;
+    await api("/api/sessions/new", {
+      method: "POST",
+      body: JSON.stringify({ id: newId, title: "Yeni Sohbet" }),
+    });
+    setCurrentSession(newId);
+    setMsgs([]);
+    loadSessions();
+  };
+
+  const deleteSession = async (e, id) => {
+    e.stopPropagation();
+    await api("/api/sessions/delete", {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    });
+    loadSessions();
+    if (currentSession === id) {
+      setCurrentSession("web");
+    }
+  };
 
   async function send(e) {
     e.preventDefault();
@@ -91,9 +140,10 @@ function Chat() {
     if (!message || busy) return;
 
     if (message === "/clear") {
-      await api("/api/clear", { method: "POST" });
+      await api("/api/clear", { method: "POST", body: JSON.stringify({ session: currentSession }) });
       setMsgs([]);
       setInput("");
+      loadSessions();
       return;
     }
 
@@ -102,7 +152,10 @@ function Chat() {
     setMsgs((m) => [...m, { role: "user", content: message }, { role: "assistant", content: "" }]);
 
     try {
-      const res = await api("/api/chat", { method: "POST", body: JSON.stringify({ message }) });
+      const res = await api("/api/chat", {
+        method: "POST",
+        body: JSON.stringify({ message, session: currentSession }),
+      });
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let acc = "";
@@ -112,6 +165,7 @@ function Chat() {
         acc += dec.decode(value, { stream: true });
         setMsgs((m) => [...m.slice(0, -1), { role: "assistant", content: acc }]);
       }
+      loadSessions();
     } catch {
       setMsgs((m) => [...m.slice(0, -1), { role: "assistant", content: "**Hata:** sunucuya ulasilamadi." }]);
     }
@@ -119,28 +173,89 @@ function Chat() {
   }
 
   return html`
-    <main>
-      ${msgs.length === 0 && html`<p class="empty">Bir sey sor. Ornek: "acik portlar neyi ifade eder?" — temizlemek icin /clear</p>`}
-      ${msgs.map(
-        (m, i) => html`
-          <div class=${"msg " + m.role} key=${i}>
-            <div class="who">${m.role === "user" ? "sen" : "secai"}</div>
-            ${m.role === "user" ? html`<div>${m.content}</div>` : html`<${Md} text=${m.content || "..."} />`}
-          </div>`
-      )}
-      <div ref=${endRef} />
-    </main>
-    <form onSubmit=${send}>
-      <input
-        value=${input}
-        onInput=${(e) => setInput(e.target.value)}
-        placeholder=${busy ? "dusunuyor..." : "> mesaj yaz"}
-        autofocus
-      />
-    </form>`;
+    <div class="chat-layout">
+      <div class="sidebar">
+        <button class="new-btn" onClick=${newChat}>+ Yeni Sohbet</button>
+        <div class="session-list">
+          ${sessions.map(
+            (s) => html`
+              <div
+                key=${s.id}
+                class=${"session-item " + (s.id === currentSession ? "active" : "")}
+                onClick=${() => setCurrentSession(s.id)}
+              >
+                <span style=${{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  ${s.title}
+                </span>
+                ${s.id !== "web" &&
+                html`<button class="del" title="Sil" onClick=${(e) => deleteSession(e, s.id)}>×</button>`}
+              </div>`
+          )}
+        </div>
+      </div>
+
+      <div class="chat-area">
+        <main>
+          ${msgs.length === 0 &&
+          html`<p class="empty">Bu sohbet yeni basladi. ChatGPT gibi konusabilir, soru sorabilir veya sistem durumunu analiz ettirebilirsin.</p>`}
+          ${msgs.map(
+            (m, i) => html`
+              <div class=${"msg " + m.role} key=${i}>
+                <div class="who">${m.role === "user" ? "sen" : "secai"}</div>
+                ${m.role === "user" ? html`<div>${m.content}</div>` : html`<${Md} text=${m.content || "..."} />`}
+              </div>`
+          )}
+          <div ref=${endRef} />
+        </main>
+        <form onSubmit=${send}>
+          <input
+            value=${input}
+            onInput=${(e) => setInput(e.target.value)}
+            placeholder=${busy ? "dusunuyor..." : "> mesaj yaz (ornek: 'adim Kayra', 'acik portlari analiz et')"}
+            autofocus
+          />
+        </form>
+      </div>
+    </div>`;
 }
 
-// --- Defter ---
+// --- Kalici Profil & Bellek Sekmesi (ChatGPT Memory) ---
+function Memories() {
+  const [mems, setMems] = useState([]);
+
+  const load = () => {
+    api("/api/memories").then((r) => r.json()).then(setMems).catch(() => {});
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const del = async (key) => {
+    await api("/api/memories/delete", { method: "POST", body: JSON.stringify({ key }) });
+    load();
+  };
+
+  return html`
+    <main>
+      <h3 style=${{ marginBottom: "8px" }}>SecAI Kalici Profil Bellekleri (ChatGPT Memory)</h3>
+      <p class="empty" style=${{ marginBottom: "16px" }}>
+        Sohbet sirasinda paylastigin bilgiler (donanimin, adin, projelerin vb.) burada saklanir ve her sohbette dogal olarak hatirlanir.
+      </p>
+      ${mems.length === 0 && html`<p class="empty">Henuz kaydedilmis kisisel bir bellek yok. Sohbette 'adim Kayra' veya 'bunu aklinda tut' dersen otomatik kaydeder.</p>`}
+      ${mems.map(
+        (m) => html`
+          <div class="mem-card" key=${m.id}>
+            <div>
+              <b>${m.key}</b>
+              <div style=${{ marginTop: "4px" }}>${m.fact}</div>
+              <small class="empty">${m.created_at}</small>
+            </div>
+            <button class="del-btn" title="Bellekten Sil" onClick=${() => del(m.key)}>×</button>
+          </div>`
+      )}
+    </main>`;
+}
+
+// --- Defter Sekmesi ---
 function Notes() {
   const [notes, setNotes] = useState([]);
   const [open, setOpen] = useState(null);
@@ -172,7 +287,7 @@ function Notes() {
     </main>`;
 }
 
-// --- Guvenlik skoru ---
+// --- Guvenlik Skoru Sekmesi ---
 function Score() {
   const [data, setData] = useState(null);
 
@@ -196,7 +311,7 @@ function Score() {
     </main>`;
 }
 
-// --- Uygulama ---
+// --- Ana Uygulama ---
 function App() {
   const [tab, setTab] = useState("chat");
   const [status, setStatus] = useState(null);
@@ -205,7 +320,12 @@ function App() {
     api("/api/status").then((r) => r.json()).then(setStatus).catch(() => {});
   }, []);
 
-  const tabs = [["chat", "sohbet"], ["notes", "defter"], ["score", "skor"]];
+  const tabs = [
+    ["chat", "sohbet"],
+    ["memory", "bellek (memory)"],
+    ["notes", "defter"],
+    ["score", "skor"],
+  ];
 
   return html`
     <div class="app">
@@ -217,10 +337,10 @@ function App() {
         </nav>
       </header>
       ${tab === "chat" && html`<${Chat} />`}
+      ${tab === "memory" && html`<${Memories} />`}
       ${tab === "notes" && html`<${Notes} />`}
       ${tab === "score" && html`<${Score} />`}
     </div>`;
 }
 
 createRoot(document.getElementById("root")).render(html`<${App} />`);
-

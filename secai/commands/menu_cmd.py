@@ -40,18 +40,26 @@ from secai.core.database import (
     add_note,
     backup_database,
     clear_chat_history,
+    create_session,
+    delete_memory,
     delete_note,
+    delete_session,
     export_note_markdown,
     get_chat_history,
     get_note,
     list_backups,
+    list_memories,
+    list_notes,
+    list_sessions,
     restore_database,
+    save_memory,
     update_note,
 )
 from secai.core.executor import (
     collect_security_checkup,
     expand_file_references,
     extract_intel_queries,
+    extract_memory_actions,
     extract_note_actions,
     extract_saved_notes,
     extract_secops_actions,
@@ -79,6 +87,9 @@ from secai.core.web import format_web_results
 console = Console()
 
 SLASH_COMMANDS = [
+    "/new",
+    "/chats",
+    "/memory",
     "/web",
     "/v",
     "/voice",
@@ -221,6 +232,9 @@ def show_shortcuts() -> None:
     table.add_column("cmd", style="bold cyan")
     table.add_column("desc", style="white")
 
+    table.add_row("/new", "ChatGPT gibi yepyeni bir sohbet oturumu baslat")
+    table.add_row("/chats", "Gecmis sohbet oturumlarini listele (/chat <id> ile gecis yap)")
+    table.add_row("/memory", "SecAI'nin senin hakkinda ogrendigi kalici kisisel bellekleri goster")
     table.add_row("/web", "Sade React Web Arayuzunu baslat (127.0.0.1:8765)")
     table.add_row("/v veya /talk", "Bas-Konus: Mikrofondan sesli emir ver, SecAI sesli ve yazili yanitlasin")
     table.add_row("/voice", "Canli Sesli Diyalog (Telsiz Modu): Karsilikli kesintisiz sesli sohbet")
@@ -835,6 +849,15 @@ def _run_agent_turn(user_input: str, session: str = "default", force_speak: bool
                 except ValueError:
                     pass
 
+        # ChatGPT Memory Tarzi Kalici Profil & Bellek Islemleri
+        for m_act in extract_memory_actions(last_assistant_reply):
+            if m_act["action"] == "remember":
+                save_memory(key=m_act["key"], fact=m_act["fact"])
+                console.print(f"[bold magenta][🧠 Bellek Kaydedildi][/bold magenta] {m_act['fact']}\n")
+            elif m_act["action"] == "forget":
+                if delete_memory(m_act["key"]):
+                    console.print(f"[bold magenta][🧠 Bellekten Silindi][/bold magenta] '{m_act['key']}'\n")
+
         # Otomatik Canli Web Aramasi
         web_queries = extract_web_searches(last_assistant_reply)
         if web_queries:
@@ -1018,6 +1041,52 @@ def run_interactive_menu(status_callback=None) -> None:
             if low in ("/clear", "clear", "temizle"):
                 clear_chat_history(session_id=session)
                 render_top_banner()
+                console.print(f"[bold green][+][/bold green] '{session}' sohbet gecmisi temizlendi.\n")
+                continue
+
+            if low in ("/new", "/yeni", "new", "yeni"):
+                import uuid
+                session = f"chat_{uuid.uuid4().hex[:6]}"
+                create_session(session, "Yeni Sohbet")
+                render_top_banner()
+                console.print(f"[bold green][+][/bold green] Yeni sohbet oturumu baslatildi: [cyan]{session}[/cyan]\n")
+                continue
+
+            if low in ("/chats", "/sessions", "chats", "sohbetler"):
+                s_list = list_sessions()
+                console.print("\n[bold white]Kayitli Sohbet Oturumlari[/bold white]")
+                for s_item in s_list:
+                    cur_mark = " [bold green][AKTIF][/bold green]" if s_item["id"] == session else ""
+                    console.print(f"  • [cyan]{s_item['id']:<14}[/cyan] '{s_item['title']}' ({s_item['msg_count']} mesaj, {s_item['updated_at']}){cur_mark}")
+                console.print("\n[dim]Gecis yapmak icin: /chat <oturum_adi> veya yeni sohbet icin: /new[/dim]\n")
+                continue
+
+            if low.startswith("/chat ") or low.startswith("chat "):
+                target_sess = user_input.split(maxsplit=1)[1].strip()
+                if target_sess:
+                    session = target_sess
+                    create_session(session, target_sess)
+                    render_top_banner()
+                    console.print(f"[bold green][+][/bold green] Oturuma gecildi: [cyan]{session}[/cyan]\n")
+                continue
+
+            if low in ("/memory", "/bellek", "memory", "bellek"):
+                mems = list_memories()
+                if not mems:
+                    console.print("\n[dim]SecAI tarafindan henuz kaydedilmis kisisel bir bellek yok.[/dim]\n")
+                else:
+                    console.print("\n[bold magenta]SecAI Kalici Profil & Bellek (ChatGPT Memory):[/bold magenta]")
+                    for m in mems:
+                        console.print(f"  • [cyan]{m['key']}:[/cyan] {m['fact']} [dim]({m['created_at']})[/dim]")
+                    console.print("\n[dim]Bellekten silmek icin: /forget <anahtar>[/dim]\n")
+                continue
+
+            if low.startswith("/forget ") or low.startswith("forget "):
+                k = user_input.split(maxsplit=1)[1].strip()
+                if delete_memory(k):
+                    console.print(f"[bold green][+][/bold green] '{k}' bellekten silindi.\n")
+                else:
+                    console.print(f"[yellow][!] '{k}' anahtarli bellek bulunamadi.[/yellow]\n")
                 continue
 
             if low in ("/v", "/talk", "talk", "konus", "konuş", "dinle"):
