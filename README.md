@@ -1,7 +1,25 @@
-# secai
+# secai (v0.8.0 - Altın Sürüm / Golden Release)
 
-Terminal tabanlı SecOps asistanı ve vaka/proje defteri.
-Yerel modeller (Ollama) veya Google Gemini API ile çalışır; log analizi, sistem denetimi ve SQLite tabanlı not yönetimi sağlar.
+Terminal ve modern web tabanlı, çift yönlü sesli SecOps asistanı, vaka defteri ve Linux sıkılaştırma motoru.
+Yerel modeller (Ollama) veya Google Gemini API ile çalışır; sistem telemetrisi, tehdit istihbaratı, referans sapma takibi ve SQLite tabanlı vaka yönetimi sağlar.
+
+---
+
+## Öne Çıkan Yetenekler
+
+- 🎙️ **Çift Yönlü Sesli Sohbet (Voice Mode):** Mikrofon konuşma tanıma (STT) ve Microsoft Edge Neural TTS (`tr-TR-AhmetNeural` / `tr-TR-EmelNeural`) ile hem terminalde hem web arayüzünde canlı sesli diyalog.
+- 🕵️ **SecOps Ajanları Hub (Agent Switcher):** Göreve özel uzmanlık profilleri:
+  - `🎯 Genel SecOps Ajanı`: Temel Linux ve güvenlik analizi.
+  - `🔍 Recon Ajanı`: Ağ keşfi, nmap, açık port ve servis haritalama.
+  - `🛡️ Hardening Ajanı`: CIS Benchmark sıkılaştırma, SSH, firewall, kernel parametreleri.
+  - `⚡ Detection Ajanı`: YARA, Sigma kuralları, Fail2ban ve tehdit tespiti.
+  - `🚩 CTF & PrivEsc Ajanı`: Yetki yükseltme, GTFOBins, SUID ve cron zafiyetleri.
+- 🌐 **Tehdit İstihbaratı (Threat Intel):** Shodan InternetDB & GeoIP sorguları ile açık portlar, CVE zafiyetleri ve CPE bilgileri.
+- 📈 **Sistem Baseline & Sapma Takibi (Drift Detection):** Sistem referans noktası alıp yeni açılan portları veya başlatılan yetkisiz servisleri anında tespit etme.
+- 🛡️ **Deterministik CIS Linux Güvenlik Skoru (0-100):** Çekirdek, ağ ve yetki ayarlarını denetleyip tek tıkla düzeltme önerileri sunma.
+- 🎨 **Minimalist Geliştirici Arayüzü (Linear / Raycast Style):** Sıfır generic efekt, derin koyu tema (`#08080a`), syntax-highlighted kopyalanabilir kod blokları ve responsive düzen.
+
+---
 
 ## Kurulum
 
@@ -13,31 +31,30 @@ pip install -e .
 
 ## Kullanım
 
+### Web Arayüzü:
+```bash
+secai web
+```
+Tarayıcında `http://127.0.0.1:8765/` adresinde SecAI Çalışma Alanı açılır.
+
+### Terminal (CLI) Modu:
 ```bash
 secai
 ```
 
 Kısayollar (`secai` içinde):
-- `/web` : Sade React web arayüzünü aç (`127.0.0.1:8765`)
-- `/v` & `/voice` : Bas-konuş ve canlı sesli diyalog (telsiz) modu
-- `/ses` : Ses ayarları (Ahmet/Emel ses seçimi, sesli yanıt aç/kapat)
-- `/api` : Gemini API anahtarı tanımla
-- `/models` : Model değiştir (Gemini / Ollama)
-- `/skills` : Yetenek seç veya ekle (`recon`, `hardening`, `detection`, `ctf`)
-- `/intel <ip/log>` : Shodan InternetDB & GeoIP tehdit istihbaratı
-- `/baseline` & `/diff` : Sistem referans kaydı ve anomali/sapma tespiti
-- `/score` : Deterministik CIS Linux güvenlik skoru (0-100)
-- `/check` : Sistem güvenlik taraması
-- `/report` : Oturum raporu (`.md`) üret
-- `@dosya` : Dosya içeriğini sohbete dahil et
+- `/web` : Web arayüzünü başlat (`127.0.0.1:8765`)
+- `/agent` : SecOps ajanlarını listele veya değiştir (`/agent recon`, `/agent ctf`, `/agent hardening`)
+- `/v` & `/voice` : Bas-konuş ve canlı sesli diyalog modu
+- `/ses` : Ses profili ve okuma ayarları
+- `/models` : Model değiştir (Ollama `gemma3:4b`, `qwen2.5-coder:7b` / Gemini)
+- `/intel <ip>` : Shodan InternetDB açık port ve CVE sorgusu
+- `/baseline` & `/diff` : Sistem snapshot'ı ve sapma analizi
+- `/score` : CIS Benchmark puanını hesapla (0-100)
+- `/clear` : Sohbet geçmişini temizle
+- `@dosya` : Dosya içeriğini analize ekle
 
-Doğrudan komutlar:
-```bash
-secai web          # Sade React web arayüzü
-journalctl -n 30 | secai audit --save "Log Analizi"
-secai status
-secai backup
-```
+---
 
 ## Lisans
 
