@@ -1,5 +1,5 @@
 // SecAI Production-Grade Workspace (Linear / Raycast / Claude Architecture)
-import React, { useEffect, useRef, useState, useMemo } from "https://esm.sh/react@18.3.1";
+import React, { useEffect, useRef, useState, useMemo, useCallback } from "https://esm.sh/react@18.3.1";
 import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
 import htm from "https://esm.sh/htm@3.1.1";
 
@@ -13,7 +13,7 @@ function api(path, opts = {}) {
   });
 }
 
-// --- Icons (Handcrafted crisp SVG icons mirroring Lucide React) ---
+// --- Crisp SVG Icons (Developer-Grade Utilitarian Minimalism) ---
 const Icon = {
   Terminal: () => html`<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>`,
   Plus: () => html`<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
@@ -21,6 +21,8 @@ const Icon = {
   Brain: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-2.04z"></path><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-2.04z"></path></svg>`,
   BookOpen: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>`,
   ShieldCheck: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path></svg>`,
+  Globe: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>`,
+  Activity: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>`,
   Trash: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`,
   Copy: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
   Check: () => html`<svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
@@ -28,11 +30,31 @@ const Icon = {
   ChevronDown: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>`,
   Search: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>`,
   Mic: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>`,
+  MicOff: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>`,
+  Volume2: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`,
+  VolumeX: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>`,
+  Square: () => html`<svg class="w-3 h-3 fill-current" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>`,
   Paperclip: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>`,
   Sidebar: () => html`<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>`,
+  Refresh: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>`,
+  Sparkles: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"></path></svg>`,
+  Layers: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>`,
 };
 
-// --- Secure Markdown Renderer with Copyable Code Blocks ---
+// --- Audio Player Manager (Edge Neural TTS) ---
+let globalAudio = null;
+
+function stopCurrentAudio() {
+  if (globalAudio) {
+    try {
+      globalAudio.pause();
+      globalAudio.currentTime = 0;
+    } catch (_) {}
+    globalAudio = null;
+  }
+}
+
+// --- Secure Markdown Renderer ---
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const HIDDEN = /```(?:save-note|update-note|delete-note|export-note|web-search|intel-lookup|secops-action|remember|forget)\s*\n[\s\S]*?(?:```|$)/gi;
 
@@ -166,13 +188,20 @@ function MarkdownRenderer({ content }) {
     </div>`;
 }
 
-// --- Main Chat Experience ---
-function ChatView({ activeSession, setActiveSession, sessions, setSessions }) {
+// --- Main Chat Experience with Full Voice & TTS Integration ---
+function ChatView({ activeSession, setActiveSession, sessions, setSessions, activeSkill, autoSpeak, setAutoSpeak }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [playingMsgIdx, setPlayingMsgIdx] = useState(null);
+  const [ttsLoadingIdx, setTtsLoadingIdx] = useState(null);
+
   const textareaRef = useRef(null);
   const bottomRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const recognitionRef = useRef(null);
 
   const loadHistory = (id) => {
     api(`/api/history?session=${id}`).then((r) => r.json()).then(setMessages).catch(() => {});
@@ -186,7 +215,133 @@ function ChatView({ activeSession, setActiveSession, sessions, setSessions }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, busy]);
 
-  // Dynamic textarea auto-grow
+  // Read message out loud using Edge Neural TTS
+  const speakMessage = async (text, idx) => {
+    if (playingMsgIdx === idx) {
+      stopCurrentAudio();
+      setPlayingMsgIdx(null);
+      return;
+    }
+
+    stopCurrentAudio();
+    setTtsLoadingIdx(idx);
+
+    try {
+      const res = await api("/api/tts", {
+        method: "POST",
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) throw new Error("TTS Hatasi");
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      globalAudio = audio;
+
+      audio.onended = () => {
+        setPlayingMsgIdx(null);
+        globalAudio = null;
+      };
+      audio.onerror = () => {
+        setPlayingMsgIdx(null);
+        globalAudio = null;
+      };
+
+      setTtsLoadingIdx(null);
+      setPlayingMsgIdx(idx);
+      await audio.play();
+    } catch {
+      setTtsLoadingIdx(null);
+      setPlayingMsgIdx(null);
+    }
+  };
+
+  // Start / Stop Microphone Recording (Web Speech API + MediaRecorder Fallback)
+  const toggleRecording = async () => {
+    if (recording) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.stop();
+      }
+      setRecording(false);
+      return;
+    }
+
+    // Try SpeechRecognition first
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      try {
+        const recog = new SpeechRecognition();
+        recog.lang = "tr-TR";
+        recog.continuous = false;
+        recog.interimResults = true;
+
+        recog.onstart = () => setRecording(true);
+        recog.onresult = (e) => {
+          const transcript = Array.from(e.results)
+            .map((r) => r[0].transcript)
+            .join("");
+          setInput((prev) => (prev ? prev + " " + transcript : transcript));
+        };
+        recog.onerror = (e) => {
+          console.warn("SpeechRec error, falling back to MediaRecorder", e);
+          recog.stop();
+          fallbackMediaRecorder();
+        };
+        recog.onend = () => setRecording(false);
+        recognitionRef.current = recog;
+        recog.start();
+        return;
+      } catch (_) {}
+    }
+
+    fallbackMediaRecorder();
+  };
+
+  const fallbackMediaRecorder = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const reader = new FileReader();
+        reader.readAsDataURL(audioBlob);
+        reader.onloadend = async () => {
+          const base64Audio = reader.result;
+          try {
+            const res = await api("/api/stt", {
+              method: "POST",
+              body: JSON.stringify({ audio: base64Audio, mime_type: "audio/webm" }),
+            });
+            const data = await res.json();
+            if (data.transcript) {
+              setInput((prev) => (prev ? prev + " " + data.transcript : data.transcript));
+            }
+          } catch (err) {
+            console.error("STT Hatasi:", err);
+          }
+        };
+      };
+
+      mediaRecorder.start();
+      setRecording(true);
+    } catch (err) {
+      alert("Mikrofona erişilemedi: " + err.message);
+      setRecording(false);
+    }
+  };
+
+  // Textarea Auto-grow
   const handleInputChange = (e) => {
     setInput(e.target.value);
     if (textareaRef.current) {
@@ -217,6 +372,7 @@ function ChatView({ activeSession, setActiveSession, sessions, setSessions }) {
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     setBusy(true);
 
+    const newIndex = messages.length + 1;
     setMessages((prev) => [...prev, { role: "user", content: text }, { role: "assistant", content: "" }]);
 
     try {
@@ -233,21 +389,25 @@ function ChatView({ activeSession, setActiveSession, sessions, setSessions }) {
         acc += dec.decode(value, { stream: true });
         setMessages((prev) => [...prev.slice(0, -1), { role: "assistant", content: acc }]);
       }
-      // Refresh session list title
+      // If Auto-Speak (Sesli Sohbet Modu) is enabled, speak out loud!
+      if (autoSpeak && acc.trim()) {
+        speakMessage(acc, newIndex);
+      }
       api("/api/sessions").then((r) => r.json()).then(setSessions);
     } catch {
       setMessages((prev) => [
         ...prev.slice(0, -1),
-        { role: "assistant", content: "**Hata:** Servis bağlantısı koptu veya zaman aşımına uğradı." },
+        { role: "assistant", content: "**Hata:** Sunucu bağlantısı kesildi veya model yanıt veremedi." },
       ]);
     }
     setBusy(false);
   };
 
   const emptyPrompts = [
-    { label: "Açık TCP/UDP portlarını denetle", cmd: "Sistemimdeki açık portları ve bağdaştırıcıları analiz et" },
-    { label: "CIS Linux güvenlik puanını hesapla", cmd: "Güvenlik sıkılaştırma (CIS hardening) skorumu çıkar" },
-    { label: "Son systemd hata loglarını incele", cmd: "Son sistem hatalarını ve ssh yetkilendirme loglarını göster" },
+    { label: "Açık TCP/UDP portlarını denetle", cmd: "Sistemimdeki açık portları ve dinleyen servisleri analiz et" },
+    { label: "CIS Linux güvenlik puanını hesapla", cmd: "Sistem güvenlik (CIS hardening) skorumu çıkar" },
+    { label: "Sistem baseline sapmalarını kontrol et", cmd: "Son referans noktasına göre sistemde bir sapma veya yeni port var mı?" },
+    { label: "Son auth ve systemd loglarını tara", cmd: "Son sistem hatalarını ve ssh yetkilendirme loglarını incele" },
   ];
 
   return html`
@@ -257,14 +417,20 @@ function ChatView({ activeSession, setActiveSession, sessions, setSessions }) {
         <div class="max-w-3xl mx-auto space-y-6">
           ${messages.length === 0 &&
           html`
-            <div class="py-20 text-center select-none">
+            <div class="py-16 text-center select-none">
               <div class="inline-flex items-center justify-center w-10 h-10 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-300 mb-4 shadow-sm">
                 <${Icon.Terminal} />
               </div>
               <h2 class="text-base font-medium text-zinc-200 tracking-tight">SecAI Operasyon Çalışma Alanı</h2>
               <p class="text-xs text-zinc-500 mt-1 max-w-sm mx-auto leading-relaxed">
-                Yerel sistem telemetrisi, tehdit istihbaratı ve Linux sıkılaştırma asistanı.
+                Yerel sistem telemetrisi, tehdit istihbaratı, sesli asistan ve Linux sıkılaştırma motoru.
               </p>
+              ${activeSkill && html`
+                <div class="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-950/30 border border-emerald-800/50 text-[11px] font-mono text-emerald-400">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                  <span>Aktif Beceri: ${activeSkill}</span>
+                </div>
+              `}
               <div class="mt-8 flex flex-wrap gap-2 justify-center max-w-xl mx-auto">
                 ${emptyPrompts.map(
                   (p, i) => html`
@@ -282,8 +448,11 @@ function ChatView({ activeSession, setActiveSession, sessions, setSessions }) {
 
           ${messages.map((m, idx) => {
             const isUser = m.role === "user";
+            const isPlaying = playingMsgIdx === idx;
+            const isTtsLoading = ttsLoadingIdx === idx;
+
             return html`
-              <div key=${idx} class="group flex gap-4 ${isUser ? 'justify-end' : 'justify-start'}">
+              <div key=${idx} class="group flex gap-3.5 ${isUser ? 'justify-end' : 'justify-start'}">
                 ${!isUser &&
                 html`
                   <div class="w-7 h-7 rounded-md bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300 flex-shrink-0 mt-0.5 shadow-sm">
@@ -293,7 +462,42 @@ function ChatView({ activeSession, setActiveSession, sessions, setSessions }) {
                 <div class="max-w-[85%] md:max-w-[80%] ${isUser ? 'bg-zinc-900 border border-zinc-800 text-zinc-100 px-4 py-2.5 rounded-lg shadow-sm font-sans text-[13.5px]' : 'flex-1 text-zinc-200 pt-0.5'}">
                   ${isUser
                     ? html`<div class="whitespace-pre-wrap leading-relaxed">${m.content}</div>`
-                    : html`<${MarkdownRenderer} content=${m.content || "..."} />`}
+                    : html`
+                      <div>
+                        <${MarkdownRenderer} content=${m.content || "..."} />
+                        <!-- Assistant Micro Actions Bar: Read Aloud TTS & Copy -->
+                        ${m.content && html`
+                          <div class="mt-3 flex items-center gap-2 pt-2 border-t border-zinc-850/60 text-zinc-500 text-xs">
+                            <button
+                              onClick=${() => speakMessage(m.content, idx)}
+                              class="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-zinc-800 hover:text-zinc-200 transition-colors ${isPlaying ? 'text-emerald-400 bg-emerald-950/20 border border-emerald-900/40' : ''}"
+                              title="${isPlaying ? 'Durdur' : 'Sesli Dinle (Edge Neural TTS)'}"
+                            >
+                              ${isTtsLoading
+                                ? html`<span class="w-3.5 h-3.5 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin"></span>`
+                                : isPlaying
+                                ? html`
+                                  <div class="flex items-center gap-1">
+                                    <span class="wave-bar"></span>
+                                    <span class="wave-bar"></span>
+                                    <span class="wave-bar"></span>
+                                    <span class="wave-bar"></span>
+                                    <span class="text-[11px] text-emerald-400 font-mono ml-1">Okunuyor</span>
+                                    <${Icon.Square} />
+                                  </div>`
+                                : html`<${Icon.Volume2} /> <span class="text-[11px] font-sans">Dinle</span>`}
+                            </button>
+
+                            <button
+                              onClick=${() => { navigator.clipboard.writeText(m.content); }}
+                              class="flex items-center gap-1 px-2 py-1 rounded hover:bg-zinc-800 hover:text-zinc-200 transition-colors"
+                              title="Metni Kopyala"
+                            >
+                              <${Icon.Copy} /> <span class="text-[11px] font-sans">Kopyala</span>
+                            </button>
+                          </div>
+                        `}
+                      </div>`}
                 </div>
 
                 ${isUser &&
@@ -308,7 +512,7 @@ function ChatView({ activeSession, setActiveSession, sessions, setSessions }) {
         </div>
       </div>
 
-      <!-- Input Box (Floating Minimal Linear Style) -->
+      <!-- Floating Minimal Linear Input Box -->
       <div class="p-4 md:p-6 bg-gradient-to-t from-[#09090b] via-[#09090b]/95 to-transparent">
         <div class="max-w-3xl mx-auto">
           <div class="relative bg-zinc-900/90 border border-zinc-800 rounded-xl shadow-xl focus-within:border-zinc-600 focus-within:ring-1 focus-within:ring-zinc-600 transition-all">
@@ -318,20 +522,37 @@ function ChatView({ activeSession, setActiveSession, sessions, setSessions }) {
               value=${input}
               onInput=${handleInputChange}
               onKeyDown=${handleKeyDown}
-              placeholder="Bir komut veya soru girin (örn. 'açık portları özetle')..."
+              placeholder="${recording ? 'Sesiniz dinleniyor, konuşun...' : 'Bir komut veya soru girin (örn. \'açık portları özetle\')...'}"
               class="w-full bg-transparent text-[13.5px] text-zinc-100 placeholder-zinc-500 px-4 pt-3.5 pb-2 outline-none resize-none min-h-[44px] max-h-[180px] font-sans leading-relaxed"
             />
-            
+
+            <!-- Recording live banner -->
+            ${recording && html`
+              <div class="flex items-center gap-2 px-4 py-1.5 bg-red-950/20 border-t border-red-900/30 text-xs text-red-400">
+                <span class="w-2 h-2 rounded-full bg-red-500 mic-recording-pulse"></span>
+                <span>Mikrofon dinleniyor... Tamamlamak için mikrofona tekrar tıklayın.</span>
+              </div>
+            `}
+
             <div class="flex items-center justify-between px-3.5 pb-2.5 pt-1 border-t border-zinc-850/60 text-zinc-500 text-xs">
               <div class="flex items-center gap-1">
-                <button title="Dosya ekle (@)" class="p-1.5 hover:text-zinc-300 hover:bg-zinc-800/60 rounded transition-colors">
-                  <${Icon.Paperclip} />
+                <!-- Voice Recording Button -->
+                <button
+                  onClick=${toggleRecording}
+                  title="${recording ? 'Kaydı Durdur' : 'Sesli Konuş (Mikrofon STT)'}"
+                  class="p-1.5 rounded transition-all ${recording ? 'bg-red-500 text-white mic-recording-pulse' : 'hover:text-zinc-200 hover:bg-zinc-800/80 text-zinc-400'}"
+                >
+                  ${recording ? html`<${Icon.MicOff} />` : html`<${Icon.Mic} />`}
                 </button>
-                <button title="Canlı Web Araması" class="p-1.5 hover:text-zinc-300 hover:bg-zinc-800/60 rounded transition-colors">
-                  <${Icon.Search} />
-                </button>
-                <button title="Sesli komut (/v)" class="p-1.5 hover:text-zinc-300 hover:bg-zinc-800/60 rounded transition-colors">
-                  <${Icon.Mic} />
+
+                <!-- Auto-speak Handsfree Toggle Button -->
+                <button
+                  onClick=${() => setAutoSpeak(!autoSpeak)}
+                  title="${autoSpeak ? 'Sesli Sohbet Modu Aktif (Yanıtlar seslendiriliyor)' : 'Sesli Sohbet Modu Kapalı'}"
+                  class="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-mono transition-colors ${autoSpeak ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-800/60' : 'hover:text-zinc-300 hover:bg-zinc-800/60 text-zinc-500'}"
+                >
+                  <${Icon.Volume2} />
+                  <span>${autoSpeak ? "Sesli Mod: Açık" : "Ses"}</span>
                 </button>
               </div>
 
@@ -348,9 +569,251 @@ function ChatView({ activeSession, setActiveSession, sessions, setSessions }) {
             </div>
           </div>
           <div class="text-center mt-2">
-            <span class="text-[11px] text-zinc-600 tracking-tight">SecAI v0.7.0 · Komut çalıştırmadan önce terminalde doğrulama isteyiniz.</span>
+            <span class="text-[11px] text-zinc-600 tracking-tight">SecAI v0.8.0 · Çift Yönlü Ses Motoru & Sistem Tehdit İstihbaratı</span>
           </div>
         </div>
+      </div>
+    </div>`;
+}
+
+// --- Threat Intel (Shodan InternetDB & GeoIP) Workspace ---
+function IntelView({ onSendToChat }) {
+  const [query, setQuery] = useState("");
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const lookup = async (target) => {
+    const q = (target || query).trim();
+    if (!q) return;
+    setLoading(true);
+    setReport(null);
+    try {
+      const res = await api("/api/intel", {
+        method: "POST",
+        body: JSON.stringify({ query: q }),
+      });
+      const data = await res.json();
+      setReport(data.report || "Sonuç bulunamadı.");
+    } catch {
+      setReport("İstihbarat servisine bağlanılamadı.");
+    }
+    setLoading(false);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") lookup();
+  };
+
+  const quickSamples = ["1.1.1.1", "8.8.8.8", "9.9.9.9", "185.199.108.153"];
+
+  return html`
+    <div class="flex-1 overflow-y-auto p-6 md:p-8 bg-[#09090b]">
+      <div class="max-w-3xl mx-auto space-y-6">
+        <div class="border-b border-zinc-800 pb-4">
+          <div class="flex items-center gap-2">
+            <${Icon.Globe} />
+            <h2 class="text-base font-semibold text-zinc-100">Tehdit İstihbaratı & Shodan Analizi</h2>
+          </div>
+          <p class="text-xs text-zinc-500 mt-1">
+            IP adresleri, log satırları ve alan adları için Shodan InternetDB açık port, zafiyet (CVE) ve GeoIP sorgulaması.
+          </p>
+        </div>
+
+        <!-- Query Search Bar -->
+        <div class="flex gap-2">
+          <input
+            type="text"
+            value=${query}
+            onChange=${(e) => setQuery(e.target.value)}
+            onKeyDown=${handleKeyDown}
+            placeholder="IP adresi veya host girin (örn. 8.8.8.8)..."
+            class="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3.5 py-2 text-xs font-mono text-zinc-100 placeholder-zinc-500 outline-none focus:border-zinc-600 transition-colors"
+          />
+          <button
+            onClick=${() => lookup()}
+            disabled=${loading || !query.trim()}
+            class="px-4 py-2 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-medium text-xs disabled:bg-zinc-800 disabled:text-zinc-600 flex items-center gap-1.5 transition-colors"
+          >
+            ${loading ? html`<span class="w-3.5 h-3.5 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin"></span>` : html`<${Icon.Search} />`}
+            <span>Sorgula</span>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2 text-xs text-zinc-500">
+          <span>Örnekler:</span>
+          ${quickSamples.map(
+            (s) => html`
+              <button
+                key=${s}
+                onClick=${() => { setQuery(s); lookup(s); }}
+                class="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 font-mono text-[11px] transition-colors"
+              >
+                ${s}
+              </button>`
+          )}
+        </div>
+
+        <!-- Intel Result Report -->
+        ${report && html`
+          <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-4">
+            <div class="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <span class="text-xs font-mono text-zinc-400 uppercase tracking-wider">İstihbarat Raporu</span>
+              <button
+                onClick=${() => onSendToChat(`Aşağıdaki tehdit istihbaratı raporunu analiz et ve risk seviyesini değerlendir:\n\n${report}`)}
+                class="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
+              >
+                <${Icon.Sparkles} />
+                <span>Asistanla Zafiyet Analizi Yap →</span>
+              </button>
+            </div>
+            <div class="pt-1">
+              <${MarkdownRenderer} content=${report} />
+            </div>
+          </div>
+        `}
+      </div>
+    </div>`;
+}
+
+// --- Baseline & Drift Detection Workspace ---
+function BaselineView({ onSendToChat }) {
+  const [diff, setDiff] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [snapshotting, setSnapshotting] = useState(false);
+
+  const loadDiff = async () => {
+    setLoading(true);
+    try {
+      const res = await api("/api/baseline/diff");
+      const data = await res.json();
+      setDiff(data);
+    } catch {
+      setDiff(null);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { loadDiff(); }, []);
+
+  const takeSnapshot = async () => {
+    setSnapshotting(true);
+    try {
+      await api("/api/baseline/take", {
+        method: "POST",
+        body: JSON.stringify({ label: `web-${Date.now().toString(36)}` }),
+      });
+      await loadDiff();
+    } catch (e) {
+      alert("Snapshot hatası: " + e.message);
+    }
+    setSnapshotting(false);
+  };
+
+  const hasDrift = diff && (
+    (diff.ports && (diff.ports.added.length > 0 || diff.ports.removed.length > 0)) ||
+    (diff.services && (diff.services.added.length > 0 || diff.services.removed.length > 0)) ||
+    (diff.users && (diff.users.added.length > 0 || diff.users.removed.length > 0)) ||
+    (diff.crontabs && diff.crontabs.changed)
+  );
+
+  return html`
+    <div class="flex-1 overflow-y-auto p-6 md:p-8 bg-[#09090b]">
+      <div class="max-w-3xl mx-auto space-y-6">
+        <div class="flex items-center justify-between border-b border-zinc-800 pb-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <${Icon.Activity} />
+              <h2 class="text-base font-semibold text-zinc-100">Sistem Baseline & Sapma Tespiti</h2>
+            </div>
+            <p class="text-xs text-zinc-500 mt-1">
+              Referans noktasına kıyasla dinlenen portlar, systemd servisleri ve yetkili hesaplardaki izinsiz sapmalar.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              onClick=${loadDiff}
+              class="h-8 px-3 rounded-md bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 text-xs text-zinc-300 flex items-center gap-1.5 transition-colors"
+            >
+              <${Icon.Refresh} />
+              <span>Yenile</span>
+            </button>
+            <button
+              onClick=${takeSnapshot}
+              disabled=${snapshotting}
+              class="h-8 px-3 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 font-medium text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50"
+            >
+              <${Icon.Plus} />
+              <span>${snapshotting ? "Alınıyor..." : "Yeni Referans Al"}</span>
+            </button>
+          </div>
+        </div>
+
+        ${!diff ? html`<div class="py-12 text-center text-xs text-zinc-500">Baseline verisi kontrol ediliyor...</div>` : html`
+          <div class="space-y-4">
+            <!-- Drift Status Card -->
+            <div class="p-4 rounded-xl border ${hasDrift ? 'border-amber-900/60 bg-amber-950/10' : 'border-emerald-900/60 bg-emerald-950/10'} flex items-center justify-between">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full ${hasDrift ? 'bg-amber-400' : 'bg-emerald-400'}"></span>
+                  <span class="text-xs font-mono uppercase tracking-wider ${hasDrift ? 'text-amber-300' : 'text-emerald-300'} font-semibold">
+                    ${hasDrift ? "Sapma Tespit Edildi (Drift Detected)" : "Sistem Temiz: Sapma Yok"}
+                  </span>
+                </div>
+                <p class="text-xs text-zinc-400 mt-1">
+                  Son referans: <span class="font-mono text-zinc-300">${diff.baseline_time || "Mevcut Değil"}</span> (${diff.baseline_label || "etiketsiz"})
+                </p>
+              </div>
+
+              ${hasDrift && html`
+                <button
+                  onClick=${() => onSendToChat(`Baseline kontrolünde sistemde sapma tespit edildi:\n- Portlar: ${JSON.stringify(diff.ports)}\n- Servisler: ${JSON.stringify(diff.services)}\nBu sapmaları güvenlik açısından incele.`)}
+                  class="text-xs px-3 py-1.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-200 hover:bg-amber-500/30 transition-colors flex items-center gap-1 font-medium"
+                >
+                  <${Icon.Sparkles} />
+                  <span>Sapmayı Asistanla Analiz Et</span>
+                </button>
+              `}
+            </div>
+
+            <!-- Ports Diff Section -->
+            <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 space-y-3">
+              <span class="text-xs font-mono uppercase tracking-wider text-zinc-400 font-semibold block">Dinlenen Ağ Portları</span>
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <div class="p-3 rounded-lg border border-zinc-855 bg-zinc-900/60">
+                  <span class="text-zinc-500 text-[11px] block mb-1">Yeni Açılan Portlar (+)</span>
+                  ${diff.ports.added.length === 0
+                    ? html`<span class="text-zinc-600 font-mono text-[11px]">Yok</span>`
+                    : diff.ports.added.map((p) => html`<span key=${p} class="inline-block mr-1.5 mb-1 px-2 py-0.5 rounded bg-red-950/40 border border-red-800 text-red-300 font-mono text-[11px]">+${p}</span>`)}
+                </div>
+                <div class="p-3 rounded-lg border border-zinc-855 bg-zinc-900/60">
+                  <span class="text-zinc-500 text-[11px] block mb-1">Kapanan Portlar (-)</span>
+                  ${diff.ports.removed.length === 0
+                    ? html`<span class="text-zinc-600 font-mono text-[11px]">Yok</span>`
+                    : diff.ports.removed.map((p) => html`<span key=${p} class="inline-block mr-1.5 mb-1 px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-400 font-mono text-[11px]">-${p}</span>`)}
+                </div>
+              </div>
+            </div>
+
+            <!-- Services Diff Section -->
+            <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 space-y-3">
+              <span class="text-xs font-mono uppercase tracking-wider text-zinc-400 font-semibold block">Systemd Servisleri</span>
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <div class="p-3 rounded-lg border border-zinc-855 bg-zinc-900/60">
+                  <span class="text-zinc-500 text-[11px] block mb-1">Yeni Başlatılan Servisler (+)</span>
+                  ${diff.services.added.length === 0
+                    ? html`<span class="text-zinc-600 font-mono text-[11px]">Yok</span>`
+                    : diff.services.added.map((s) => html`<span key=${s} class="inline-block mr-1.5 mb-1 px-2 py-0.5 rounded bg-amber-950/40 border border-amber-800 text-amber-300 font-mono text-[11px]">+${s}</span>`)}
+                </div>
+                <div class="p-3 rounded-lg border border-zinc-855 bg-zinc-900/60">
+                  <span class="text-zinc-500 text-[11px] block mb-1">Durdurulan Servisler (-)</span>
+                  ${diff.services.removed.length === 0
+                    ? html`<span class="text-zinc-600 font-mono text-[11px]">Yok</span>`
+                    : diff.services.removed.map((s) => html`<span key=${s} class="inline-block mr-1.5 mb-1 px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-400 font-mono text-[11px]">-${s}</span>`)}
+                </div>
+              </div>
+            </div>
+          </div>
+        `}
       </div>
     </div>`;
 }
@@ -449,24 +912,43 @@ function NotesView() {
 }
 
 // --- Hardening Scorer View ---
-function ScoreView() {
+function ScoreView({ onSendToChat }) {
   const [data, setData] = useState(null);
-  useEffect(() => {
-    api("/api/score").then((r) => r.json()).then(setData);
-  }, []);
+  const [loading, setLoading] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    api("/api/score").then((r) => r.json()).then((d) => {
+      setData(d);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
 
   if (!data) return html`<div class="flex-1 flex items-center justify-center text-xs text-zinc-500">Denetim puanı hesaplanıyor...</div>`;
 
   return html`
     <div class="flex-1 overflow-y-auto p-6 md:p-8 bg-[#09090b]">
       <div class="max-w-3xl mx-auto space-y-6">
+        <div class="flex items-center justify-between border-b border-zinc-800 pb-4">
+          <div>
+            <h2 class="text-base font-semibold text-zinc-100">CIS Benchmark Linux Güvenlik Skoru</h2>
+            <p class="text-xs text-zinc-500 mt-1">Sistem çekirdeği, ağ parametreleri ve yetki kısıtlamaları denetimi.</p>
+          </div>
+          <button onClick=${load} class="h-8 px-3 rounded-md bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 text-xs text-zinc-300 flex items-center gap-1.5 transition-colors">
+            <${Icon.Refresh} />
+            <span>${loading ? "Taranıyor..." : "Yeniden Tara"}</span>
+          </button>
+        </div>
+
         <div class="border border-zinc-800 rounded-xl p-5 bg-zinc-900/50 flex items-center justify-between">
           <div>
-            <span class="text-xs font-mono text-zinc-500 uppercase tracking-wider block">CIS Benchmark Linux Skoru</span>
+            <span class="text-xs font-mono text-zinc-500 uppercase tracking-wider block">Toplam CIS Skoru</span>
             <div class="text-3xl font-bold font-mono text-zinc-100 mt-1">${data.score} <span class="text-sm font-normal text-zinc-500">/ ${data.max_score}</span></div>
           </div>
           <div class="text-right">
-            <span class="text-xs font-mono px-2.5 py-1 rounded border border-zinc-700/60 bg-zinc-800 text-zinc-300 font-medium">${data.grade}</span>
+            <span class="text-xs font-mono px-3 py-1.5 rounded border border-zinc-700/60 bg-zinc-800 text-zinc-200 font-medium">${data.grade}</span>
           </div>
         </div>
 
@@ -482,7 +964,17 @@ function ScoreView() {
                   <span class="font-mono text-[10px] px-1.5 py-0.5 rounded border ${badgeColor}">${c.status} (${c.points})</span>
                 </div>
                 <div class="text-zinc-500 text-[11px]">Değer: <span class="font-mono text-zinc-400">${c.current}</span></div>
-                ${!isPass && html`<div class="text-[11px] text-zinc-400 mt-1.5 pt-1.5 border-t border-zinc-850 font-mono text-zinc-300">Düzeltme: <code>${c.remediation}</code></div>`}
+                ${!isPass && html`
+                  <div class="mt-2 pt-2 border-t border-zinc-850 flex items-center justify-between">
+                    <span class="font-mono text-zinc-300 text-[11px]">Çözüm: <code>${c.remediation}</code></span>
+                    <button
+                      onClick=${() => onSendToChat(`CIS Denetiminde başarısız olan "${c.name}" kuralını düzeltmek için adımları anlat. Önerilen komut: ${c.remediation}`)}
+                      class="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium ml-2"
+                    >
+                      Asistana Sor →
+                    </button>
+                  </div>
+                `}
               </div>`;
           })}
         </div>
@@ -497,9 +989,20 @@ function App() {
   const [activeSession, setActiveSession] = useState("web");
   const [status, setStatus] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [skills, setSkills] = useState([]);
+  const [activeSkill, setActiveSkill] = useState(null);
+  const [autoSpeak, setAutoSpeak] = useState(false);
+  const [skillMenuOpen, setSkillMenuOpen] = useState(false);
 
   useEffect(() => {
-    api("/api/status").then((r) => r.json()).then(setStatus).catch(() => {});
+    api("/api/status").then((r) => r.json()).then((s) => {
+      setStatus(s);
+      setActiveSkill(s.active_skill);
+      setAutoSpeak(Boolean(s.tts_enabled));
+    }).catch(() => {});
+
+    api("/api/skills").then((r) => r.json()).then(setSkills).catch(() => {});
+
     api("/api/sessions").then((r) => r.json()).then((d) => {
       setSessions(d);
       if (d.length > 0) setActiveSession(d[0].id);
@@ -522,6 +1025,24 @@ function App() {
     if (activeSession === id && updated.length > 0) setActiveSession(updated[0].id);
   };
 
+  const switchSkill = async (skillName) => {
+    const res = await api("/api/skill/set", { method: "POST", body: JSON.stringify({ name: skillName }) });
+    const data = await res.json();
+    setActiveSkill(data.active);
+    setSkillMenuOpen(false);
+  };
+
+  const handleSendToChat = async (promptText) => {
+    setTab("chat");
+    setTimeout(async () => {
+      await api("/api/chat", {
+        method: "POST",
+        body: JSON.stringify({ message: promptText, session: activeSession }),
+      });
+      api("/api/history?session=" + activeSession);
+    }, 100);
+  };
+
   return html`
     <div class="flex h-screen w-screen overflow-hidden bg-[#08080a] text-zinc-100 font-sans">
       <!-- Collapsible Minimal Sidebar -->
@@ -530,6 +1051,7 @@ function App() {
           <div class="flex items-center gap-2 font-mono text-xs font-semibold text-zinc-300 tracking-tight">
             <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
             <span>secai</span>
+            <span class="text-[10px] text-zinc-500 font-normal">v0.8.0</span>
           </div>
           <button onClick=${() => setSidebarOpen(false)} class="p-1 text-zinc-500 hover:text-zinc-300 rounded hover:bg-zinc-800 transition-colors">
             <${Icon.Sidebar} />
@@ -546,10 +1068,12 @@ function App() {
         <!-- Navigation Tabs -->
         <div class="px-3 pb-2 space-y-0.5">
           ${[
-            { id: "chat", label: "Sohbet", icon: Icon.MessageSquare },
-            { id: "memory", label: "Kalıcı Bellek", icon: Icon.Brain },
-            { id: "notes", label: "Vaka Defteri", icon: Icon.BookOpen },
+            { id: "chat", label: "Sohbet & Ses", icon: Icon.MessageSquare },
+            { id: "intel", label: "Tehdit İstihbaratı", icon: Icon.Globe },
+            { id: "baseline", label: "Baseline & Sapma", icon: Icon.Activity },
             { id: "score", label: "CIS Güvenlik Skoru", icon: Icon.ShieldCheck },
+            { id: "notes", label: "Vaka Defteri", icon: Icon.BookOpen },
+            { id: "memory", label: "Kalıcı Bellek", icon: Icon.Brain },
           ].map((t) => html`
             <button
               key=${t.id}
@@ -602,11 +1126,49 @@ function App() {
                 <${Icon.Sidebar} />
               </button>`}
             <span class="text-xs font-medium text-zinc-300 font-sans">
-              ${tab === "chat" ? (sessions.find((s) => s.id === activeSession)?.title || "Sohbet") : tab === "memory" ? "Bellek Yönetimi" : tab === "notes" ? "Vaka Defteri" : "Güvenlik Skoru"}
+              ${tab === "chat" ? (sessions.find((s) => s.id === activeSession)?.title || "Sohbet") : tab === "intel" ? "Tehdit İstihbaratı" : tab === "baseline" ? "Sistem Baseline & Sapma" : tab === "score" ? "Güvenlik Skoru" : tab === "notes" ? "Vaka Defteri" : "Kalıcı Bellek"}
             </span>
           </div>
 
           <div class="flex items-center gap-2">
+            <!-- Skill Selector Dropdown -->
+            <div class="relative">
+              <button
+                onClick=${() => setSkillMenuOpen(!skillMenuOpen)}
+                class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-300 hover:border-zinc-700 transition-colors"
+              >
+                <${Icon.Layers} />
+                <span>${activeSkill ? `Beceri: ${activeSkill}` : "Standart Mod"}</span>
+                <${Icon.ChevronDown} />
+              </button>
+
+              ${skillMenuOpen && html`
+                <div class="absolute right-0 mt-1.5 w-60 rounded-lg bg-zinc-900 border border-zinc-800 shadow-2xl py-1 z-50 text-xs">
+                  <button
+                    onClick=${() => switchSkill(null)}
+                    class="w-full text-left px-3 py-2 hover:bg-zinc-800 flex items-center justify-between ${!activeSkill ? 'text-emerald-400 font-semibold' : 'text-zinc-300'}"
+                  >
+                    <span>Standart / Genel Siber Asistan</span>
+                    ${!activeSkill && html`<${Icon.Check} />`}
+                  </button>
+                  ${skills.map((sk) => html`
+                    <button
+                      key=${sk.name}
+                      onClick=${() => switchSkill(sk.name)}
+                      class="w-full text-left px-3 py-2 hover:bg-zinc-800 flex items-center justify-between ${activeSkill === sk.name ? 'text-emerald-400 font-semibold' : 'text-zinc-300'}"
+                    >
+                      <div>
+                        <div class="font-mono text-zinc-200">${sk.name}</div>
+                        <div class="text-[10px] text-zinc-500 truncate max-w-[180px]">${sk.description}</div>
+                      </div>
+                      ${activeSkill === sk.name && html`<${Icon.Check} />`}
+                    </button>
+                  `)}
+                </div>
+              `}
+            </div>
+
+            <!-- Active LLM Model Badge -->
             <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-400">
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
               <span>${status ? status.model : "yerel"}</span>
@@ -616,10 +1178,12 @@ function App() {
 
         <!-- Dynamic View Router -->
         <div class="flex-1 flex overflow-hidden">
-          ${tab === "chat" && html`<${ChatView} activeSession=${activeSession} setActiveSession=${setActiveSession} sessions=${sessions} setSessions=${setSessions} />`}
-          ${tab === "memory" && html`<${MemoryView} />`}
+          ${tab === "chat" && html`<${ChatView} activeSession=${activeSession} setActiveSession=${setActiveSession} sessions=${sessions} setSessions=${setSessions} activeSkill=${activeSkill} autoSpeak=${autoSpeak} setAutoSpeak=${setAutoSpeak} />`}
+          ${tab === "intel" && html`<${IntelView} onSendToChat=${handleSendToChat} />`}
+          ${tab === "baseline" && html`<${BaselineView} onSendToChat=${handleSendToChat} />`}
+          ${tab === "score" && html`<${ScoreView} onSendToChat=${handleSendToChat} />`}
           ${tab === "notes" && html`<${NotesView} />`}
-          ${tab === "score" && html`<${ScoreView} />`}
+          ${tab === "memory" && html`<${MemoryView} />`}
         </div>
       </div>
     </div>`;

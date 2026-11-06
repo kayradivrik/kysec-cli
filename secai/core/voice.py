@@ -83,6 +83,34 @@ async def _synthesize_edge_tts(text: str, out_path: str, voice: str, rate: str) 
     await communicate.save(out_path)
 
 
+def synthesize_speech_bytes(markdown_text: str) -> bytes:
+    """Metni Edge Neural TTS ile MP3 baytlarina donusturur (Web UI veya API icin)."""
+    clean = clean_text_for_speech(markdown_text)
+    if not clean:
+        return b""
+
+    settings = load_settings()
+    voice = settings.get("tts_voice", DEFAULT_TTS_VOICE)
+    rate = settings.get("tts_rate", "+8%")
+
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+        tmp_mp3 = f.name
+
+    try:
+        asyncio.run(_synthesize_edge_tts(clean, tmp_mp3, voice=voice, rate=rate))
+        p = Path(tmp_mp3)
+        if p.exists():
+            return p.read_bytes()
+        return b""
+    except Exception:
+        return b""
+    finally:
+        try:
+            Path(tmp_mp3).unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
 def _find_audio_player() -> Optional[list[str]]:
     if shutil.which("mpv"):
         return ["mpv", "--no-video", "--really-quiet"]
@@ -222,24 +250,23 @@ def record_voice_input() -> Optional[Path]:
     return wav_path
 
 
-def transcribe_voice(wav_path: Path) -> str:
+def transcribe_voice_bytes(audio_bytes: bytes, mime_type: str = "audio/wav") -> str:
     """
-    Kaydedilen WAV dosyasini Gemini 3 Flash Native Audio STT motoruyla Turkce metne cevirir.
+    Ham ses baytlarini Gemini Native Audio STT motoruyla Turkce metne cevirir.
+    Web UI veya harici istemcilerden gelen WebM, WAV, OGG, MP3 formatlarini destekler.
     """
     settings = load_settings()
     api_key = settings.get("gemini_api_key", "").strip()
     if not api_key:
-        console.print(
-            "[bold red][-][/bold red] Ses tanima (STT) icin Gemini API anahtari gereklidir ('/api' komutuyla tanimlayin)."
-        )
         return ""
 
-    try:
-        audio_bytes = wav_path.read_bytes()
-    except Exception:
+    if not audio_bytes:
         return ""
-    finally:
-        wav_path.unlink(missing_ok=True)
+
+    # Tarayici mime-type standardizasyonu
+    clean_mime = mime_type.split(";")[0].strip().lower()
+    if not clean_mime or clean_mime == "application/octet-stream":
+        clean_mime = "audio/webm"
 
     audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
     model = settings.get("gemini_model", DEFAULT_GEMINI_MODEL) or DEFAULT_GEMINI_MODEL
@@ -250,7 +277,7 @@ def transcribe_voice(wav_path: Path) -> str:
             {
                 "role": "user",
                 "parts": [
-                    {"inline_data": {"mime_type": "audio/wav", "data": audio_b64}},
+                    {"inline_data": {"mime_type": clean_mime, "data": audio_b64}},
                     {
                         "text": (
                             "Bu ses kaydinda kullanicinin soyledigi cumleyi hicbir ek aciklama veya yorum yapmadan "
@@ -270,19 +297,31 @@ def transcribe_voice(wav_path: Path) -> str:
     headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
 
     try:
-        with console.status("[cyan][*] Ses cozumleniyor...[/cyan]", spinner="dots"):
-            resp = requests.post(url, headers=headers, json=payload, timeout=30)
-            resp.raise_for_status()
-            data = resp.json()
-            candidates = data.get("candidates", [])
-            if not candidates:
-                return ""
-            parts = candidates[0].get("content", {}).get("parts", [])
-            transcript = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
-            if transcript.upper() in ("BOS", "BOŞ", "YOK", "."):
-                return ""
-            return transcript
+        resp = requests.post(url, headers=headers, json=payload, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        candidates = data.get("candidates", [])
+        if not candidates:
+            return ""
+        parts = candidates[0].get("content", {}).get("parts", [])
+        transcript = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
+        if transcript.upper() in ("BOS", "BOŞ", "YOK", "."):
+            return ""
+        return transcript
     except Exception as exc:
         console.print(f"[bold red][-][/bold red] Ses cozumleme hatasi: {exc}")
         return ""
+
+
+def transcribe_voice(wav_path: Path) -> str:
+    """
+    Kaydedilen WAV dosyasini Gemini 3 Flash Native Audio STT motoruyla Turkce metne cevirir.
+    """
+    try:
+        audio_bytes = wav_path.read_bytes()
+    except Exception:
+        return ""
+    finally:
+        wav_path.unlink(missing_ok=True)
+    return transcribe_voice_bytes(audio_bytes, mime_type="audio/wav")
 

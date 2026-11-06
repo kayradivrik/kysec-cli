@@ -15,8 +15,19 @@ import secrets
 from urllib.parse import urlparse
 
 from secai import __version__
-from secai.config import get_active_llm_info
-from secai.core.baseline import calculate_hardening_score
+from secai.config import (
+    DEFAULT_GEMINI_MODEL,
+    DEFAULT_TTS_VOICE,
+    get_active_llm_info,
+    load_settings,
+    save_settings,
+)
+from secai.core.baseline import (
+    calculate_hardening_score,
+    compare_with_baseline,
+    format_baseline_diff_report,
+    save_baseline,
+)
 from secai.core.database import (
     add_chat_message,
     add_note,
@@ -32,11 +43,20 @@ from secai.core.database import (
     save_memory,
 )
 from secai.core.executor import (
+    collect_security_checkup,
     extract_memory_actions,
     extract_saved_notes,
     strip_internal_blocks,
 )
-from secai.core.llm import OllamaConnectionError, stream_chat
+from secai.core.intel import format_intel_report
+from secai.core.llm import OllamaConnectionError, stream_chat, stream_generate
+from secai.core.skills import get_active_skill, list_all_skills, set_active_skill
+from secai.core.voice import (
+    VOICE_PROFILES,
+    synthesize_speech_bytes,
+    transcribe_voice,
+    transcribe_voice_bytes,
+)
 
 STATIC_DIR = Path(__file__).parent / "static"
 WEB_SESSION = "web"
@@ -113,9 +133,25 @@ def make_handler(token: str):
 
             if path == "/api/status":
                 info = get_active_llm_info()
+                settings = load_settings()
+                active_skill = get_active_skill()
                 return self._send_json(
-                    {"version": __version__, "provider": info["provider_label"], "model": info["model"]}
+                    {
+                        "version": __version__,
+                        "provider": info["provider_label"],
+                        "model": info["model"],
+                        "active_skill": active_skill["name"] if active_skill else None,
+                        "tts_voice": settings.get("tts_voice", DEFAULT_TTS_VOICE),
+                        "tts_enabled": bool(settings.get("tts_enabled", False)),
+                    }
                 )
+
+            if path == "/api/skills":
+                return self._send_json(list_all_skills())
+
+            if path == "/api/baseline/diff":
+                diff = compare_with_baseline()
+                return self._send_json(diff)
 
             if path == "/api/sessions":
                 s_list = list_sessions()
@@ -190,6 +226,67 @@ def make_handler(token: str):
                 if key:
                     delete_memory(key)
                 return self._send_json({"ok": True})
+
+            if path == "/api/intel":
+                data = self._read_json()
+                query = data.get("query", "").strip()
+                report = format_intel_report(query)
+                return self._send_json({"report": report})
+
+            if path == "/api/baseline/take":
+                data = self._read_json()
+                label = data.get("label", "web-snap")
+                rec = save_baseline(label)
+                return self._send_json(rec)
+
+            if path == "/api/skill/set":
+                data = self._read_json()
+                name = data.get("name")
+                chosen = set_active_skill(name)
+                return self._send_json({"active": chosen["name"] if chosen else None})
+
+            if path == "/api/voice/settings":
+                data = self._read_json()
+                settings = load_settings()
+                if "voice" in data:
+                    settings["tts_voice"] = data["voice"]
+                if "enabled" in data:
+                    settings["tts_enabled"] = bool(data["enabled"])
+                save_settings(settings)
+                return self._send_json(
+                    {
+                        "ok": True,
+                        "tts_voice": settings.get("tts_voice", DEFAULT_TTS_VOICE),
+                        "tts_enabled": bool(settings.get("tts_enabled", False)),
+                    }
+                )
+
+            if path == "/api/tts":
+                data = self._read_json()
+                text = data.get("text", "")
+                audio_bytes = synthesize_speech_bytes(text)
+                if not audio_bytes:
+                    return self._send_json({"error": "ses uretilemedi"}, 500)
+                self.send_response(200)
+                self.send_header("Content-Type", "audio/mpeg")
+                self.send_header("Content-Length", str(len(audio_bytes)))
+                self.end_headers()
+                self.wfile.write(audio_bytes)
+                return
+
+            if path == "/api/stt":
+                data = self._read_json()
+                b64_audio = data.get("audio", "")
+                mime_type = data.get("mime_type", "audio/webm")
+                if not b64_audio:
+                    return self._send_json({"error": "ses verisi bos"}, 400)
+                try:
+                    import base64
+                    raw_bytes = base64.b64decode(b64_audio.split(",")[-1])
+                    text = transcribe_voice_bytes(raw_bytes, mime_type=mime_type)
+                    return self._send_json({"transcript": text})
+                except Exception as e:
+                    return self._send_json({"error": str(e)}, 500)
 
             if path == "/api/chat":
                 data = self._read_json()

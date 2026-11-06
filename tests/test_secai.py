@@ -200,6 +200,46 @@ class SecAITestSuite(unittest.TestCase):
         self.assertIn("Sekay", cleaned)
         self.assertNotIn("ss -tulnp", cleaned)
 
+    def test_web_server_endpoints(self):
+        from http.server import HTTPServer
+        import json
+        import threading
+        import urllib.request
+        from secai.web.server import make_handler
+
+        token = "test-token-xyz"
+        server = HTTPServer(("127.0.0.1", 0), make_handler(token))
+        port = server.server_port
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+
+        def req(path, method="GET", data=None):
+            url = f"http://127.0.0.1:{port}{path}"
+            headers = {"X-SecAI-Token": token}
+            body = json.dumps(data).encode("utf-8") if data else None
+            r = urllib.request.Request(url, data=body, headers=headers, method=method)
+            with urllib.request.urlopen(r) as resp:
+                return resp.status, json.loads(resp.read().decode("utf-8"))
+
+        status, data = req("/api/status")
+        self.assertEqual(status, 200)
+        self.assertIn("version", data)
+
+        status, skills = req("/api/skills")
+        self.assertEqual(status, 200)
+        self.assertIsInstance(skills, list)
+
+        status, diff = req("/api/baseline/diff")
+        self.assertEqual(status, 200)
+        self.assertIn("baseline_label", diff)
+
+        status, score = req("/api/score")
+        self.assertEqual(status, 200)
+        self.assertIn("score", score)
+
+        server.shutdown()
+        server.server_close()
+
 
 if __name__ == "__main__":
     unittest.main()
