@@ -372,6 +372,42 @@ class SecAITestSuite(unittest.TestCase):
             self.assertEqual(res["abuse_score"], 85)
             self.assertEqual(res["risk"], "KRITIK")
 
+    def test_command_dispatcher_and_web_router(self):
+        from secai.commands.dispatcher import CommandDispatcher
+        from secai.web.router import Router
+
+        # Test Web Router registration and match
+        router = Router()
+
+        @router.get("/api/test/{item_id}/info")
+        def dummy_get(handler, item_id: str):
+            return f"item_{item_id}"
+
+        fn, params = router.match("GET", "/api/test/42/info")
+        self.assertIsNotNone(fn)
+        self.assertEqual(params.get("item_id"), "42")
+        self.assertEqual(fn(None, **params), "item_42")
+
+        # Non-matching route returns None
+        fn_miss, _ = router.match("GET", "/api/nonexistent")
+        self.assertIsNone(fn_miss)
+
+        # Test CommandDispatcher
+        dispatcher = CommandDispatcher()
+        state = {"session": "test_sess", "should_exit": False}
+
+        # Clear command handled
+        handled = dispatcher.dispatch("/clear", state)
+        self.assertTrue(handled)
+
+        # Exit command sets flag
+        dispatcher.dispatch("/exit", state)
+        self.assertTrue(state["should_exit"])
+
+        # Non-command returns False for natural dialogue
+        handled_dialogue = dispatcher.dispatch("selam nasilsin", state)
+        self.assertFalse(handled_dialogue)
+
 
 if __name__ == "__main__":
     unittest.main()

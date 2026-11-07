@@ -1,72 +1,69 @@
-import os
+"""SecAI Ana Terminal Arayüzü ve Ajan Orkestratörü.
+
+Bu modül, kullanıcı etkileşimini, readline geçmişini, akış yanıtlarını
+ve çok adımlı otonom SecOps ajan döngüsünü koordine eder.
+Tüm alt komutlar `dispatcher` ve ilgili `handlers` modüllerine delege edilir.
+"""
+
 from pathlib import Path
-import shutil
-import sys
 from rich.console import Console
-from rich.live import Live
-from rich.markdown import Markdown
-from rich.padding import Padding
-from rich.panel import Panel
-from rich.prompt import Confirm, Prompt
-from rich.table import Table
-from rich.text import Text
 
-try:
-    import readline
-except ImportError:
-    readline = None  # type: ignore
-
-from secai import __version__
-from secai.commands.note_cmd import note_list, note_show
-from secai.config import (
-    DEFAULT_DEEPSEEK_MODEL,
-    DEFAULT_GEMINI_MODEL,
-    DEFAULT_GROQ_MODEL,
-    DEFAULT_OLLAMA_MODEL,
-    DEFAULT_OPENROUTER_MODEL,
-    DEEPSEEK_MODELS,
-    GROQ_MODELS,
-    OPENROUTER_MODELS,
-    get_active_llm_info,
-    get_data_dir,
-    get_user_host_cwd,
-    load_settings,
-    save_settings,
+from secai.commands.dispatcher import CommandDispatcher
+from secai.commands.handlers.config_handler import (
+    configure_api_key,
+    manage_image_interactive,
+    manage_infomy_interactive,
+    manage_skills_interactive,
+    switch_model_interactive,
 )
-from secai.core.baseline import (
-    calculate_hardening_score,
-    compare_with_baseline,
-    format_baseline_diff_report,
-    format_hardening_report,
-    save_baseline,
+from secai.commands.handlers.intel_handler import (
+    interactive_abuse,
+    interactive_intel,
+    interactive_vt,
 )
+from secai.commands.handlers.note_handler import (
+    interactive_add_note,
+    interactive_edit_note,
+    interactive_list_and_read,
+    interactive_restore_backup,
+)
+from secai.commands.handlers.secops_handler import (
+    generate_session_report,
+    interactive_audit,
+    interactive_baseline,
+    interactive_diff,
+    interactive_hardening_score,
+    interactive_security_checkup,
+    stream_markdown_from_generator,
+)
+from secai.commands.handlers.voice_handler import (
+    interactive_push_to_talk,
+    interactive_voice_loop,
+    manage_voice_settings,
+)
+from secai.commands.ui import (
+    PIXEL_LOGO_LINES,
+    SLASH_COMMANDS,
+    render_prompt_frame_and_input,
+    render_top_banner,
+    save_readline_history,
+    setup_readline,
+    show_shortcuts,
+)
+from secai.config import load_settings
+from secai.core.baseline import compare_with_baseline, calculate_hardening_score, format_baseline_diff_report, format_hardening_report
 from secai.core.database import (
-    VALID_CATEGORIES,
     add_chat_message,
     add_note,
     auto_title_session,
-    backup_database,
-    clear_chat_history,
-    create_session,
     delete_memory,
     delete_note,
-    delete_session,
     export_note_markdown,
     get_chat_history,
-    get_note,
-    get_user_profile,
-    list_backups,
-    list_memories,
-    list_notes,
-    list_sessions,
-    restore_database,
     save_memory,
-    set_user_profile,
     update_note,
-    update_session_title,
 )
 from secai.core.executor import (
-    collect_security_checkup,
     expand_file_references,
     extract_intel_queries,
     extract_memory_actions,
@@ -78,1043 +75,29 @@ from secai.core.executor import (
     prompt_and_execute,
     strip_internal_blocks,
 )
-from secai.core.intel import (
-    enrich_abuseipdb,
-    enrich_virustotal,
-    extract_iocs,
-    format_intel_report,
-)
-from secai.core.llm import OllamaConnectionError, check_ollama, stream_chat, stream_generate
-from secai.core.skills import (
-    create_custom_skill,
-    get_active_skill,
-    list_all_skills,
-    set_active_skill,
-)
-from secai.core.voice import (
-    VOICE_PROFILES,
-    record_voice_input,
-    speak_text,
-    transcribe_voice,
-)
+from secai.core.intel import format_intel_report
+from secai.core.llm import OllamaConnectionError, stream_chat
+from secai.core.voice import speak_text
 from secai.core.web import format_web_results
 
 console = Console()
 
-SLASH_COMMANDS = [
-    "/infomy",
-    "/myinfo",
-    "/rename",
-    "/title",
-    "/baslik",
-    "/image",
-    "/img",
-    "/ciz",
-    "/gorsel",
-    "/vt",
-    "/virustotal",
-    "/abuse",
-    "/abuseipdb",
-    "/agent",
-    "/agents",
-    "/ajan",
-    "/new",
-    "/chats",
-    "/memory",
-    "/web",
-    "/v",
-    "/voice",
-    "/talk",
-    "/ses",
-    "/tts",
-    "/api",
-    "/model",
-    "/models",
-    "/skills",
-    "/skill",
-    "/intel",
-    "/baseline",
-    "/diff",
-    "/score",
-    "/harden",
-    "/notes",
-    "/add",
-    "/edit",
-    "/save",
-    "/report",
-    "/audit",
-    "/check",
-    "/backup",
-    "/restore",
-    "/status",
-    "/clear",
-    "/help",
-    "/exit",
-]
-
-PIXEL_LOGO_LINES = [
-    ("  ▄▄████▄▄  ", "#00e5ff"),
-    (" ██▀    ▀██ ", "#00b8ff"),
-    (" ▀██▄▄      ", "#3b82f6"),
-    ("    ▀▀██▄▄  ", "#6366f1"),
-    (" ██▄    ▄██ ", "#8b5cf6"),
-    ("  ▀▀████▀▀  ", "#a855f7"),
-]
-
-
-def _setup_readline() -> Path:
-    history_file = get_data_dir() / "command_history"
-    if readline is None:
-        return history_file
-
-    if history_file.exists():
-        try:
-            readline.read_history_file(str(history_file))
-        except Exception:
-            pass
-
-    readline.set_history_length(500)
-
-    def completer(text: str, state: int):
-        options = [c for c in SLASH_COMMANDS if c.startswith(text.lower())]
-        if state < len(options):
-            return options[state]
-        return None
-
-    try:
-        readline.parse_and_bind("tab: complete")
-        readline.set_completer(completer)
-        readline.set_completer_delims(" \t\n")
-    except Exception:
-        pass
-
-    return history_file
-
-
-def _save_readline_history(history_file: Path) -> None:
-    if readline is None:
-        return
-    try:
-        readline.write_history_file(str(history_file))
-        if os.name == "posix" and history_file.exists():
-            history_file.chmod(0o600)
-    except Exception:
-        pass
-
-
-def render_top_banner() -> None:
-    """Ekranı temizler ve Antigravity CLI tarzı üst başlığı çizer."""
-    console.clear()
-    llm_info = get_active_llm_info()
-    settings = load_settings()
-    active_skill = get_active_skill()
-    skill_badge = f"  [skill: {active_skill['name']}]" if active_skill else ""
-    tts_badge = "  [ses: aktif]" if settings.get("tts_enabled") else ""
-    user_host, cwd_short = get_user_host_cwd()
-
-    logo_text = Text()
-    for idx, (line, color) in enumerate(PIXEL_LOGO_LINES):
-        logo_text.append(line, style=f"bold {color}")
-        if idx < len(PIXEL_LOGO_LINES) - 1:
-            logo_text.append("\n")
-
-    info_text = Text()
-    info_text.append(f"SecAI CLI {__version__}\n", style="bold #38bdf8")
-    info_text.append(f"{user_host} ({llm_info['provider_label']})\n", style="dim white")
-    info_text.append(f"{llm_info['model']}{skill_badge}{tts_badge}\n", style="dim white")
-    info_text.append(f"{cwd_short}", style="dim white")
-
-    header_grid = Table.grid(padding=(0, 2))
-    header_grid.add_column()
-    header_grid.add_column()
-    header_grid.add_row(logo_text, info_text)
-
-    console.print()
-    console.print(header_grid)
-    console.print()
-
-
-def render_prompt_frame_and_input() -> str:
-    """İnce çizgili > giriş alanını ve alt kısayol çubuğunu readline uyumlu olarak çizer."""
-    llm_info = get_active_llm_info()
-    term_width = shutil.get_terminal_size((80, 24)).columns
-    line_str = "─" * term_width
-
-    left_hint = " ? kisayollar   /v sesli konus   /ses ayar   /model   /notes   /check"
-    right_model = f"{llm_info['model']} "
-    spaces = max(1, term_width - len(left_hint) - len(right_model))
-    footer = f"[dim]{left_hint}{' ' * spaces}{right_model}[/dim]"
-
-    console.print(f"[#0e4f6e]{line_str}[/#0e4f6e]")
-    console.print(footer)
-    console.print(f"[#0e4f6e]{line_str}[/#0e4f6e]")
-
-    if sys.stdout.isatty() and readline is not None:
-        # Readline non-printing escape isaretleyicileri (\001 ve \002) sayesinde
-        # ok tuslari ve backspace > isaretini asla bozmaz
-        prompt_str = "\001\033[1;36m\002> \001\033[0m\002"
-        return input(prompt_str).strip()
-
-    return console.input("[bold cyan]> [/bold cyan]").strip()
-
-
-def show_shortcuts() -> None:
-    table = Table(show_header=False, box=None, padding=(0, 2))
-    table.add_column("cmd", style="bold cyan")
-    table.add_column("desc", style="white")
-
-    table.add_row("/new", "ChatGPT gibi yepyeni bir sohbet oturumu baslat")
-    table.add_row("/chats", "Gecmis sohbet oturumlarini listele (/chat <id> ile gecis yap)")
-    table.add_row("/memory", "SecAI'nin senin hakkinda ogrendigi kalici kisisel bellekleri goster")
-    table.add_row("/web", "Sade React Web Arayuzunu baslat (127.0.0.1:8765)")
-    table.add_row("/v veya /talk", "Bas-Konus: Mikrofondan sesli emir ver, SecAI sesli ve yazili yanitlasin")
-    table.add_row("/voice", "Canli Sesli Diyalog (Telsiz Modu): Karsilikli kesintisiz sesli sohbet")
-    table.add_row("/ses veya /tts", "Ses ayarlarini yonet (Ahmet/Emel ses secimi, yazili sohbette ses ac/kapat)")
-    table.add_row("/api", "API Anahtarlarını yönet (Groq, DeepSeek, Gemini, OpenRouter, VT, Abuse)")
-    table.add_row("/model", "Aktif AI Motorunu değiştir (Groq 500t/s, DeepSeek R1, Gemini, Ollama)")
-    table.add_row("/skills", "SecOps yeteneklerini (recon, hardening, detection, ctf) sec veya yeni skill ekle")
-    table.add_row("/intel <ip/log>", "Shodan InternetDB & GeoIP ile IP/CVE/Hash tehdit istihbarati sorgula")
-    table.add_row("/vt <hedef>", "VirusTotal v3 ile IP, Domain veya Hash (MD5/SHA256) güvenlik taraması")
-    table.add_row("/abuse <ip>", "AbuseIPDB v2 ile IP kötü niyetlilik ve saldırı itibar kontrolü")
-    table.add_row("/baseline", "Sistemin temiz referans goruntusunu (portlar, servisler, SHA256) al")
-    table.add_row("/diff", "Mevcut sistemi son baseline ile karsilastir (arka kapi / degisim tespiti)")
-    table.add_row("/score", "Deterministik CIS Linux Guvenlik & Sikilastirma Puanini (0-100) hesapla")
-    table.add_row("/check", "Bilgisayarin anlik guvenlik taramasini yap ve AI ile analiz et")
-    table.add_row("/report", "Mevcut oturumdaki bulgulardan resmi Siber Guvenlik Raporu (.md) uret")
-    table.add_row("@dosya", "Sohbet icinde herhangi bir dosyayi okutmak icin basina @ koyun (orn: @/etc/hosts)")
-    table.add_row("/notes", "Vaka & Proje defterindeki kayitlari listele ve oku")
-    table.add_row("/add", "Deftere yeni vaka, bulgu veya kisisel proje ekle")
-    table.add_row("/edit", "Mevcut bir notun/projenin uzerine ekleme yap veya duzenle")
-    table.add_row("/save <baslik>", "Son AI yanitini Vaka Defterine kaydet")
-    table.add_row("/audit <dosya>", "Bir log veya kaynak kod dosyasini (otomatik Shodan IOC ile) analiz et")
-    table.add_row("/backup", "Veritabaninin yedegini al")
-    table.add_row("/restore", "Kayitli bir yedekten veritabanini geri yukle")
-    table.add_row("/clear", "Ekrani ve sohbet hafizasini temizle")
-    table.add_row("q / /exit", "Cikis")
-
-    console.print()
-    console.print(table)
-    console.print()
-
-
-def configure_api_key(inline_key: str = "") -> None:
-    raw = inline_key.strip()
-    parts = raw.split(maxsplit=1)
-    sub = parts[0].lower() if parts else ""
-    val = parts[1].strip() if len(parts) > 1 else ""
-
-    if sub in ("vt", "virustotal") and val:
-        save_settings({"virustotal_api_key": val})
-        console.print("\n[bold green][+][/bold green] VirusTotal API anahtarı kaydedildi.\n")
-        return
-
-    if sub in ("abuse", "abuseipdb") and val:
-        save_settings({"abuseipdb_api_key": val})
-        console.print("\n[bold green][+][/bold green] AbuseIPDB API anahtarı kaydedildi.\n")
-        return
-
-    if sub in ("groq", "gsk") and val:
-        save_settings({"groq_api_key": val, "provider": "groq", "groq_model": DEFAULT_GROQ_MODEL})
-        render_top_banner()
-        console.print(f"\n[bold green][+][/bold green] Groq API anahtarı kaydedildi ve [cyan]{DEFAULT_GROQ_MODEL}[/cyan] (500 tok/sn) aktif edildi!\n")
-        return
-
-    if sub in ("deepseek", "r1") and val:
-        save_settings({"deepseek_api_key": val, "provider": "deepseek", "deepseek_model": DEFAULT_DEEPSEEK_MODEL})
-        render_top_banner()
-        console.print(f"\n[bold green][+][/bold green] DeepSeek API anahtarı kaydedildi ve [cyan]{DEFAULT_DEEPSEEK_MODEL} (R1 Akıl Yürütme)[/cyan] aktif edildi!\n")
-        return
-
-    if sub in ("openrouter",) and val:
-        save_settings({"openrouter_api_key": val, "provider": "openrouter", "openrouter_model": DEFAULT_OPENROUTER_MODEL})
-        render_top_banner()
-        console.print(f"\n[bold green][+][/bold green] OpenRouter API anahtarı kaydedildi ve [cyan]{DEFAULT_OPENROUTER_MODEL}[/cyan] aktif edildi!\n")
-        return
-
-    # Doğrudan anahtar yapıştırıldıysa otomatik tanı:
-    if raw.startswith("gsk_"):
-        save_settings({"groq_api_key": raw, "provider": "groq", "groq_model": DEFAULT_GROQ_MODEL})
-        render_top_banner()
-        console.print(f"\n[bold green][+][/bold green] Groq API anahtarı algılandı ve [cyan]{DEFAULT_GROQ_MODEL}[/cyan] (500 tok/sn) aktif edildi!\n")
-        return
-
-    if raw.startswith("sk-or-"):
-        save_settings({"openrouter_api_key": raw, "provider": "openrouter", "openrouter_model": DEFAULT_OPENROUTER_MODEL})
-        render_top_banner()
-        console.print(f"\n[bold green][+][/bold green] OpenRouter API anahtarı algılandı ve [cyan]{DEFAULT_OPENROUTER_MODEL}[/cyan] aktif edildi!\n")
-        return
-
-    if raw.startswith("AIza"):
-        save_settings({"gemini_api_key": raw, "provider": "gemini", "gemini_model": DEFAULT_GEMINI_MODEL})
-        render_top_banner()
-        console.print(f"\n[bold green][+][/bold green] Gemini API anahtarı kaydedildi ve [cyan]{DEFAULT_GEMINI_MODEL}[/cyan] aktif edildi.\n")
-        return
-
-    if raw.startswith("sk-"):
-        save_settings({"deepseek_api_key": raw, "provider": "deepseek", "deepseek_model": DEFAULT_DEEPSEEK_MODEL})
-        render_top_banner()
-        console.print(f"\n[bold green][+][/bold green] DeepSeek API anahtarı algılandı ve [cyan]{DEFAULT_DEEPSEEK_MODEL} (R1 Akıl Yürütme)[/cyan] aktif edildi!\n")
-        return
-
-    console.print(
-        Panel(
-            "[bold white]SecAI Evrensel API & Model Sağlayıcıları[/bold white]\n\n"
-            "  [cyan]1[/cyan]  ⚡ Groq API Key       [dim](Ücretsiz, 500 tok/sn Llama-3.3 70B & Qwen 32B - console.groq.com)[/dim]\n"
-            "  [cyan]2[/cyan]  🧠 DeepSeek API Key   [dim](DeepSeek R1 Derin Düşünce & V3 - platform.deepseek.com)[/dim]\n"
-            "  [cyan]3[/cyan]  🌐 Google Gemini Key  [dim](Gemini 3 Flash & Pro - aistudio.google.com)[/dim]\n"
-            "  [cyan]4[/cyan]  🧭 OpenRouter Key     [dim](Tüm Ücretsiz Modeller :free - openrouter.ai)[/dim]\n"
-            "  [cyan]5[/cyan]  🛡️ VirusTotal API Key [dim](70+ Antivirüs ile Hash & IP Tarama - virustotal.com)[/dim]\n"
-            "  [cyan]6[/cyan]  ⚡ AbuseIPDB API Key  [dim](IP İtibar & Saldırı Raporlama - abuseipdb.com)[/dim]\n"
-            "  [cyan]0[/cyan]  İptal\n\n"
-            "[dim]İpucu: Anahtarı doğrudan '/api gsk_...' veya '/api AIza...' şeklinde yapıştırabilirsiniz.[/dim]",
-            title="🔑 API Anahtarları",
-            border_style="cyan",
-        )
-    )
-    ch = Prompt.ask("Seçim", choices=["1", "2", "3", "4", "5", "6", "0"], default="1")
-    if ch == "0":
-        return
-    if ch == "1":
-        k = Prompt.ask("[bold cyan]Groq API Key (gsk_...)[/bold cyan]").strip()
-        if k:
-            save_settings({"groq_api_key": k, "provider": "groq", "groq_model": DEFAULT_GROQ_MODEL})
-            render_top_banner()
-            console.print(f"\n[bold green][+][/bold green] Groq aktif edildi: [cyan]{DEFAULT_GROQ_MODEL}[/cyan]\n")
-    elif ch == "2":
-        k = Prompt.ask("[bold cyan]DeepSeek API Key (sk-...)[/bold cyan]").strip()
-        if k:
-            save_settings({"deepseek_api_key": k, "provider": "deepseek", "deepseek_model": DEFAULT_DEEPSEEK_MODEL})
-            render_top_banner()
-            console.print(f"\n[bold green][+][/bold green] DeepSeek R1 aktif edildi: [cyan]{DEFAULT_DEEPSEEK_MODEL}[/cyan]\n")
-    elif ch == "3":
-        k = Prompt.ask("[bold cyan]Gemini API Key[/bold cyan]").strip()
-        if k:
-            save_settings({"gemini_api_key": k, "provider": "gemini", "gemini_model": DEFAULT_GEMINI_MODEL})
-            render_top_banner()
-            console.print(f"\n[bold green][+][/bold green] Gemini aktif edildi: [cyan]{DEFAULT_GEMINI_MODEL}[/cyan]\n")
-    elif ch == "4":
-        k = Prompt.ask("[bold cyan]OpenRouter API Key (sk-or-...)[/bold cyan]").strip()
-        if k:
-            save_settings({"openrouter_api_key": k, "provider": "openrouter", "openrouter_model": DEFAULT_OPENROUTER_MODEL})
-            render_top_banner()
-            console.print(f"\n[bold green][+][/bold green] OpenRouter aktif edildi: [cyan]{DEFAULT_OPENROUTER_MODEL}[/cyan]\n")
-    elif ch == "5":
-        k = Prompt.ask("[bold cyan]VirusTotal API Key[/bold cyan]").strip()
-        if k:
-            save_settings({"virustotal_api_key": k})
-            console.print("\n[bold green][+][/bold green] VirusTotal API anahtarı kaydedildi.\n")
-    elif ch == "6":
-        k = Prompt.ask("[bold cyan]AbuseIPDB API Key[/bold cyan]").strip()
-        if k:
-            save_settings({"abuseipdb_api_key": k})
-            console.print("\n[bold green][+][/bold green] AbuseIPDB API anahtarı kaydedildi.\n")
-
-
-def switch_model_interactive() -> None:
-    s = load_settings()
-    active_info = get_active_llm_info()
-    active_model_name = active_info["model"]
-    active_provider = active_info["provider"]
-
-    has_gemini = bool(s.get("gemini_api_key", "").strip())
-    has_groq = bool(s.get("groq_api_key", "").strip())
-    has_deepseek = bool(s.get("deepseek_api_key", "").strip())
-    has_openrouter = bool(s.get("openrouter_api_key", "").strip())
-
-    ollama_state = check_ollama()
-    local_models = ollama_state.get("models", []) or [DEFAULT_OLLAMA_MODEL]
-
-    console.print("\n[bold white]🧠 Model & Yapay Zeka Motoru Seçimi[/bold white]\n")
-
-    # Group 1: Local RTX 4050
-    console.print("[bold green]── 🖥️ YEREL GPU (RTX 4050 / Ollama - Çevrimdışı & Kotasız) ──[/bold green]")
-    model_map = {}
-    idx = 1
-    for m in local_models:
-        cur = " [bold green][AKTİF][/bold green]" if active_provider == "ollama" and active_model_name == m else ""
-        console.print(f"  [cyan]{idx:<2}[/cyan] {m:<30} [dim](%100 Yerel / 40+ tok/sn)[/dim]{cur}")
-        model_map[str(idx)] = ("ollama", m)
-        idx += 1
-
-    # Group 2: Groq Ultra Fast
-    console.print(f"\n[bold cyan]── ⚡ GROQ LPU (Ultra Hızlı - 500 tok/sn {'[Key Var]' if has_groq else '[Key Gerekli]'}) ──[/bold cyan]")
-    for m in GROQ_MODELS:
-        cur = " [bold green][AKTİF][/bold green]" if active_provider == "groq" and active_model_name == m else ""
-        console.print(f"  [cyan]{idx:<2}[/cyan] {m:<30} [dim](Groq / LPU Cloud)[/dim]{cur}")
-        model_map[str(idx)] = ("groq", m)
-        idx += 1
-
-    # Group 3: DeepSeek R1 Reasoning
-    console.print(f"\n[bold magenta]── 🧠 DEEPSEEK REASONING (Derin Akıl Yürütme & V3 {'[Key Var]' if has_deepseek else '[Key Gerekli]'}) ──[/bold magenta]")
-    for m in DEEPSEEK_MODELS:
-        cur = " [bold green][AKTİF][/bold green]" if active_provider == "deepseek" and active_model_name == m else ""
-        label = "R1 Akıl Yürütme (Thinking Chain)" if "reasoner" in m else "V3 Genel & Kod"
-        console.print(f"  [cyan]{idx:<2}[/cyan] {m:<30} [dim]({label})[/dim]{cur}")
-        model_map[str(idx)] = ("deepseek", m)
-        idx += 1
-
-    # Group 4: Google Gemini
-    console.print(f"\n[bold blue]── 🌐 GOOGLE GEMINI (Bulut LLM {'[Key Var]' if has_gemini else '[Key Gerekli]'}) ──[/bold blue]")
-    for m in ("gemini-3-flash-preview", "gemini-3.1-pro-preview"):
-        cur = " [bold green][AKTİF][/bold green]" if active_provider == "gemini" and active_model_name == m else ""
-        console.print(f"  [cyan]{idx:<2}[/cyan] {m:<30} [dim](Google AI Studio)[/dim]{cur}")
-        model_map[str(idx)] = ("gemini", m)
-        idx += 1
-
-    # Group 5: OpenRouter
-    console.print(f"\n[bold yellow]── 🧭 OPENROUTER (Evrensel Ücretsiz Modeller {'[Key Var]' if has_openrouter else '[Key Gerekli]'}) ──[/bold yellow]")
-    for m in OPENROUTER_MODELS:
-        cur = " [bold green][AKTİF][/bold green]" if active_provider == "openrouter" and active_model_name == m else ""
-        console.print(f"  [cyan]{idx:<2}[/cyan] {m:<30} [dim](Ücretsiz Açık Kaynak)[/dim]{cur}")
-        model_map[str(idx)] = ("openrouter", m)
-        idx += 1
-
-    console.print("\n  [cyan]i[/cyan]  Yeni yerel Ollama modeli indir (örn: qwen2.5-coder:3b)")
-    console.print("  [cyan]0[/cyan]  İptal\n")
-
-    choices = list(model_map.keys()) + ["i", "0"]
-    choice = Prompt.ask("Seçiminiz", choices=choices, default="1")
-    if choice == "0":
-        return
-
-    if choice == "i":
-        new_model = Prompt.ask("İndirilecek Ollama modeli", default="qwen2.5-coder:3b").strip()
-        if new_model:
-            prompt_and_execute(f"ollama pull {new_model}")
-            save_settings({"provider": "ollama", "ollama_model": new_model})
-            render_top_banner()
-            console.print(f"[bold green][+][/bold green] '{new_model}' indirildi ve aktif model yapıldı.\n")
-        return
-
-    prov, mod = model_map[choice]
-    # Key kontrolü
-    if prov == "groq" and not has_groq:
-        console.print("\n[yellow][!] Groq API anahtarı gerekli.[/yellow]")
-        configure_api_key("groq")
-    elif prov == "deepseek" and not has_deepseek:
-        console.print("\n[yellow][!] DeepSeek API anahtarı gerekli.[/yellow]")
-        configure_api_key("deepseek")
-    elif prov == "gemini" and not has_gemini:
-        console.print("\n[yellow][!] Gemini API anahtarı gerekli.[/yellow]")
-        configure_api_key("gemini")
-    elif prov == "openrouter" and not has_openrouter:
-        console.print("\n[yellow][!] OpenRouter API anahtarı gerekli.[/yellow]")
-        configure_api_key("openrouter")
-
-    save_settings({"provider": prov, f"{prov}_model" if prov != "ollama" else "ollama_model": mod})
-    render_top_banner()
-    console.print(f"\n[bold green][+][/bold green] Aktif Yapay Zeka Motoru: [cyan]{mod} ({prov.upper()})[/cyan]\n")
-
-
-def interactive_vt(inline_target: str = "") -> None:
-    target = inline_target.strip()
-    if not target:
-        target = Prompt.ask("\n[bold cyan]Sorgulanacak IP, Domain veya SHA256/MD5 Hash[/bold cyan]").strip()
-        if not target:
-            return
-
-    s = load_settings()
-    vt_key = s.get("virustotal_api_key", "").strip()
-    if not vt_key:
-        console.print("\n[yellow][!] VirusTotal API anahtarı tanımlı değil.[/yellow]")
-        console.print("[dim]https://www.virustotal.com/ üzerinden ücretsiz alıp '/api vt <key>' ile ekleyebilirsiniz.[/dim]\n")
-        return
-
-    with console.status(f"[bold cyan]🔍 VirusTotal v3 taranıyor: {target}...[/bold cyan]", spinner="dots"):
-        res = enrich_virustotal(target)
-
-    if not res:
-        console.print(f"[yellow][!] VirusTotal üzerinde '{target}' için kayıt bulunamadı veya API hatası oluştu.[/yellow]\n")
-        return
-
-    color = "red" if res["is_dangerous"] else "green"
-    badge = "[bold red]🚨 ZARARLI TESPİT EDİLDİ[/bold red]" if res["is_dangerous"] else "[bold green]✓ TEMİZ / GÜVENLİ[/bold green]"
-    console.print(
-        Panel(
-            f"{badge}\n\n"
-            f"[bold]Hedef:[/bold] [cyan]{res['target']}[/cyan] ({res['type']})\n"
-            f"[bold]Tespit Skoru:[/bold] [{color}]{res['score_label']}[/{color}]\n"
-            f"[bold]Zararlı:[/bold] {res['malicious']}  |  [bold]Şüpheli:[/bold] {res['suspicious']}  |  [bold]Temiz/Atlanan:[/bold] {res['harmless'] + res['undetected']}\n"
-            f"[bold]Topluluk İtibarı:[/bold] {res['reputation']}\n",
-            title="🛡️ VirusTotal v3 Tehdit İstihbaratı",
-            border_style=color,
-        )
-    )
-
-
-def interactive_abuse(inline_ip: str = "") -> None:
-    ip = inline_ip.strip()
-    if not ip:
-        ip = Prompt.ask("\n[bold cyan]Sorgulanacak Dış IPv4 Adresi[/bold cyan]").strip()
-        if not ip:
-            return
-
-    s = load_settings()
-    key = s.get("abuseipdb_api_key", "").strip()
-    if not key:
-        console.print("\n[yellow][!] AbuseIPDB API anahtarı tanımlı değil.[/yellow]")
-        console.print("[dim]https://www.abuseipdb.com/ üzerinden ücretsiz alıp '/api abuse <key>' ile ekleyebilirsiniz.[/dim]\n")
-        return
-
-    with console.status(f"[bold cyan]⚡ AbuseIPDB taranıyor: {ip}...[/bold cyan]", spinner="dots"):
-        res = enrich_abuseipdb(ip)
-
-    if not res:
-        console.print(f"[yellow][!] AbuseIPDB üzerinde '{ip}' için kayıt bulunamadı veya geçersiz IP.[/yellow]\n")
-        return
-
-    color = "red" if res["abuse_score"] >= 40 else "yellow" if res["abuse_score"] >= 15 else "green"
-    console.print(
-        Panel(
-            f"[bold]Kötü Niyetlilik Skoru:[/bold] [{color}]%{res['abuse_score']} ({res['risk']})[/{color}]\n\n"
-            f"[bold]IP:[/bold] [cyan]{res['ip']}[/cyan]  |  [bold]Ülke:[/bold] {res['country']}  |  [bold]ISP:[/bold] {res['isp']}\n"
-            f"[bold]Toplam Şikayet / Rapor:[/bold] {res['total_reports']} adet\n"
-            f"[bold]Son Şikayet Tarihi:[/bold] {res['last_reported_at']}\n"
-            f"[bold]Beyaz Liste:[/bold] {'Evet' if res['is_whitelisted'] else 'Hayır'}\n",
-            title="⚡ AbuseIPDB Saldırı & İtibar Analizi",
-            border_style=color,
-        )
-    )
-
-
-def manage_infomy_interactive(inline_info: str = "") -> None:
-    """Kullanicinin kim oldugunu, profilini ve ozel tercihlerini kaydeder veya gosterir."""
-    if inline_info:
-        set_user_profile(inline_info)
-        console.print(
-            Panel(
-                f"[bold green]✓ Profil Bilgin Başarıyla Kaydedildi![/bold green]\n\n"
-                f"[cyan]{inline_info}[/cyan]\n\n"
-                f"[dim]SecAI artık tüm sohbetlerde ve komutlarda senin kim olduğunu, hedeflerini ve tercihlerini tam olarak hatırlayacak.[/dim]",
-                title="👤 SecAI Kimlik Hafızası (/infomy)",
-                border_style="green",
-            )
-        )
-        return
-
-    existing = get_user_profile()
-    if existing:
-        console.print(
-            Panel(
-                f"[bold cyan]Kayıtlı Kimlik Profilin:[/bold cyan]\n\n"
-                f"[white]{existing}[/white]\n\n"
-                f"[dim]Profilini güncellemek için yeni bilgiyi yazabilir ya da aynı bırakmak için boş geçebilirsiniz.[/dim]",
-                title="👤 SecAI Kimlik Hafızası (/infomy)",
-                border_style="cyan",
-            )
-        )
-        new_info = Prompt.ask("\n[bold cyan]Yeni profil bilgin[/bold cyan] (değiştirmemek için Enter)", default="")
-        if new_info.strip():
-            set_user_profile(new_info.strip())
-            console.print("\n[bold green][+][/bold green] Kimlik profilin güncellendi!\n")
-    else:
-        console.print(
-            Panel(
-                "[bold cyan]SecAI seni tanısın![/bold cyan]\n\n"
-                "Kendinle ilgili dilediğin bilgileri gir (adın, rolün, uzmanlık alanın, kullandığın teknolojiler, hedeflerin).\n\n"
-                "[dim]Örnek: 'Adım Kayra, siber güvenlik ve ağ analizi araştırmacısıyım. Arch Linux ve Python kullanıyorum. Hedefim OSCP sertifikası almak.'[/dim]",
-                title="👤 SecAI Kimlik Tanımlama (/infomy)",
-                border_style="cyan",
-            )
-        )
-        info = Prompt.ask("[bold cyan]Profil Bilgin[/bold cyan]")
-        if info.strip():
-            set_user_profile(info.strip())
-            console.print("\n[bold green][+][/bold green] Kimlik profilin kaydedildi! SecAI artık seni tanıyor.\n")
-
-
-def manage_image_interactive(prompt: str = "") -> None:
-    """Yapay zeka ile görsel üretir ve yerel diskte saklar."""
-    from secai.core.image import generate_image
-    import subprocess
-    import shutil
-
-    if not prompt:
-        prompt = Prompt.ask("\n[bold cyan]🎨 Oluşturulacak Görsel Promptu[/bold cyan]").strip()
-        if not prompt:
-            return
-
-    console.print()
-    with console.status("[bold magenta]🎨 Görsel oluşturuluyor (Stable Diffusion / Horde)...[/bold magenta]", spinner="dots"):
-        img_path = generate_image(prompt)
-
-    if not img_path or not img_path.exists():
-        console.print("[bold red][!] Görsel oluşturulamadı. Lütfen tekrar deneyin.[/bold red]\n")
-        return
-
-    size_kb = max(1, img_path.stat().st_size // 1024)
-    console.print(
-        Panel(
-            f"[bold green]✓ Görsel Başarıyla Üretildi![/bold green]\n\n"
-            f"[bold]Prompt:[/bold] [italic]{prompt}[/italic]\n"
-            f"[bold]Dosya Yolu:[/bold] [cyan]{img_path}[/cyan]\n"
-            f"[bold]Boyut:[/bold] {size_kb} KB\n\n"
-            f"[dim]İpucu: Görseli açmak için sistem görüntüleyicisi tetikleniyor...[/dim]",
-            title="🎨 SecAI Image Studio (/image)",
-            border_style="magenta",
-        )
-    )
-
-    if shutil.which("xdg-open"):
-        try:
-            subprocess.Popen(["xdg-open", str(img_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception:
-            pass
-
-
-def manage_skills_interactive(inline_arg: str = "") -> None:
-    arg = inline_arg.strip().lower()
-    if arg == "add" or arg == "ekle":
-        console.print("\n[bold cyan][*] Yeni Skill Olustur[/bold cyan]")
-        name = Prompt.ask("Skill adi (orn: web-pentest)").strip()
-        if not name:
-            return
-        desc = Prompt.ask("Kisa aciklama").strip()
-        instr = Prompt.ask("Modele verilecek uzmanlik talimati (prompt)").strip()
-        if not instr:
-            return
-        path = create_custom_skill(name=name, description=desc, instructions=instr)
-        set_active_skill(path.stem)
-        render_top_banner()
-        console.print(f"[bold green][+][/bold green] Yeni skill kaydedildi ve aktif edildi: [cyan]{path.stem}[/cyan]\n")
-        return
-
-    if arg and arg not in ("list", "liste"):
-        try:
-            chosen = set_active_skill(arg)
-            render_top_banner()
-            if chosen:
-                console.print(f"[bold green][+][/bold green] Aktif skill: [cyan]{chosen['name']}[/cyan] ({chosen['description']})\n")
-            else:
-                console.print("[bold green][+][/bold green] Skill modu kapatildi (standart mod).\n")
-            return
-        except ValueError as err:
-            console.print(f"[bold red][-][/bold red] {err}\n")
-
-    skills = list_all_skills()
-    active = get_active_skill()
-    active_name = active["name"] if active else ""
-
-    console.print("\n[bold white]SecAI Yetenekleri (Skills)[/bold white]")
-    for idx, s in enumerate(skills, start=1):
-        mark = " [bold green][AKTIF][/bold green]" if s["name"] == active_name else ""
-        console.print(f"  [cyan]{idx}[/cyan]  [bold white]{s['name']}[/bold white] — [dim]{s['description']}[/dim]{mark}")
-    console.print("  [cyan]y[/cyan]  Yeni ozel skill ekle (+)")
-    console.print("  [cyan]0[/cyan]  Skill modunu kapat (Standart Mod)\n")
-
-    choice = Prompt.ask("Secim (iptal icin Enter)", default="").strip().lower()
-    if not choice:
-        return
-    if choice == "0":
-        set_active_skill(None)
-        render_top_banner()
-        console.print("[bold green][+][/bold green] Skill modu kapatildi.\n")
-    elif choice == "y":
-        manage_skills_interactive("add")
-    elif choice.isdigit() and 1 <= int(choice) <= len(skills):
-        picked = skills[int(choice) - 1]
-        set_active_skill(picked["name"])
-        render_top_banner()
-        console.print(f"[bold green][+][/bold green] Aktif skill: [cyan]{picked['name']}[/cyan]\n")
-
-
-def interactive_add_note() -> None:
-    console.print("\n[bold cyan][*] Yeni Not / Proje Kaydi[/bold cyan]")
-    title = Prompt.ask("Baslik").strip()
-    if not title:
-        return
-
-    category = Prompt.ask(
-        "Kategori",
-        choices=list(VALID_CATEGORIES),
-        default="project",
-    )
-    tags = Prompt.ask("Etiketler (opsiyonel)", default="")
-    content = Prompt.ask("Icerik").strip()
-    if not content:
-        return
-
-    note_id = add_note(title=title, content=content, category=category, tags=tags)
-    console.print(f"[bold green][+][/bold green] Kaydedildi (#{note_id})\n")
-
-
-def interactive_edit_note() -> None:
-    console.print()
-    note_list(category=None, tag=None, query=None)
-    choice = Prompt.ask("\nDuzenlenecek Not ID (iptal icin Enter)", default="").strip()
-    if not choice.lstrip("#").isdigit():
-        return
-
-    note_id = int(choice.lstrip("#"))
-    existing = get_note(note_id)
-    if not existing:
-        console.print(f"[bold red][-][/bold red] #{note_id} bulunamadi.\n")
-        return
-
-    console.print(f"\n[cyan][*] Secilen:[/cyan] #{note_id} {existing['title']}")
-    mode = Prompt.ask(
-        "Islem",
-        choices=["ekle", "degistir"],
-        default="ekle",
-    )
-    new_text = Prompt.ask("Yeni icerik / ek").strip()
-    if not new_text:
-        return
-
-    update_note(note_id=note_id, content=new_text, append=(mode == "ekle"))
-    console.print(f"[bold green][+][/bold green] #{note_id} guncellendi.\n")
-
-
-def interactive_restore_backup() -> None:
-    backups = list_backups()
-    if not backups:
-        console.print("\n[yellow][!][/yellow] Henuz alinmis bir yedek bulunamadi.\n")
-        return
-
-    console.print("\n[bold white]Mevcut Veritabani Yedekleri[/bold white]")
-    for idx, b in enumerate(backups[:10], start=1):
-        console.print(f"  [cyan]{idx}[/cyan]  {b.name}")
-
-    choice = Prompt.ask("\nGeri yuklenecek yedek numarasi (iptal icin Enter)", default="").strip()
-    if not choice.isdigit():
-        return
-
-    idx = int(choice) - 1
-    if idx < 0 or idx >= len(backups[:10]):
-        console.print("[bold red][-][/bold red] Gecersiz secim.\n")
-        return
-
-    selected = backups[idx]
-    if Confirm.ask(f"'{selected.name}' yedegi geri yuklensin mi?", default=False):
-        restore_database(selected)
-        console.print(f"[bold green][+][/bold green] Veritabani geri yuklendi: {selected.name}\n")
-
-
-def interactive_list_and_read() -> None:
-    console.print()
-    note_list(category=None, tag=None, query=None)
-
-    choice = Prompt.ask(
-        "\nDetay okumak icin ID girin (geri donmek icin Enter)",
-        default="",
-    ).strip()
-
-    if choice.lstrip("#").isdigit():
-        note_id = int(choice.lstrip("#"))
-        console.print()
-        note_show(note_id)
-        if Confirm.ask("Markdown (.md) olarak disa aktarilsin mi?", default=False):
-            path = export_note_markdown(note_id)
-            console.print(f"[bold green][+][/bold green] {path}")
-    console.print()
-
-
-def _stream_markdown_from_generator(gen) -> str:
-    """Generator'dan gelen metni canli, renklendirilmis Markdown paneli olarak ekrana akitir."""
-    chunks: list[str] = []
-    with console.status("[cyan][*] dusunuyor...[/cyan]", spinner="dots"):
-        first_token = next(gen, None)
-
-    if not first_token:
-        return ""
-
-    chunks.append(first_token)
-    console.print()
-    with Live(
-        Padding(Markdown(strip_internal_blocks("".join(chunks)), code_theme="monokai"), (0, 1)),
-        console=console,
-        refresh_per_second=14,
-    ) as live:
-        for token in gen:
-            chunks.append(token)
-            visible_md = strip_internal_blocks("".join(chunks))
-            live.update(Padding(Markdown(visible_md, code_theme="monokai"), (0, 1)))
-    console.print()
-    return "".join(chunks).strip()
-
-
-def interactive_security_checkup(require_confirm: bool = True) -> None:
-    telemetry = collect_security_checkup(require_confirm=require_confirm)
-    if not telemetry:
-        return
-
-    score_data = calculate_hardening_score()
-    score_md = format_hardening_report(score_data)
-    console.print()
-    console.print(Padding(Markdown(score_md, code_theme="monokai"), (0, 1)))
-    console.print()
-
-    llm_info = get_active_llm_info()
-    console.print(f"[bold cyan][*][/bold cyan] model: {llm_info['model']} ile detayli sistem guvenlik analizi yapiliyor...")
-
-    prompt = (
-        "Asagida kullanicinin bilgisayarindan toplanan deterministik CIS Guvenlik Skoru tablosu ve anlik sistem guvenlik telemetrisi "
-        "(dinlenen portlar, surecler, ag arayuzleri, komsu cihazlar, guvenlik duvari durumu, son hata/SSH loglari) yer almaktadir.\n"
-        "Lutfen analizi yarida kesmeden eksiksiz olarak su basliklarla yaz:\n"
-        "1. **Risk Seviyesi ve Nedenleri:** Sistemin neden bu risk seviyesinde (DUSUK/ORTA/YUKSEK) oldugunu somut bulgularla (hangi portlar dis aga acik, hangi sysctl parametreleri eksik) madde madde acikla.\n"
-        "2. **Acik Portlar ve Servis Analizi (Markdown Tablosu):** `127.0.0.1` (yerel/guvenli) ile `0.0.0.0` / `*` (tum yerel aga acik) portlari ayirarak tablo halinde goster.\n"
-        "3. **Uygulanabilir Sikilastirma (Hardening) Komutlari:** Tespit edilen WARN/FAIL maddelerini ve acik port risklerini kapatmak icin dogrudan uygulanabilir Arch Linux komutlarini ```bash bloklari icinde ver.\n\n"
-        f"{score_md}\n\n{telemetry}"
-    )
-
-    try:
-        gen = stream_generate(prompt=prompt)
-        analysis = _stream_markdown_from_generator(gen)
-    except OllamaConnectionError as err:
-        console.print(f"\n[bold red][-][/bold red] {err}\n")
-        return
-
-    full_report = f"{score_md}\n\n---\n\n{analysis}" if analysis else score_md
-
-    if full_report and Confirm.ask("Bu sistem guvenlik raporunu Vaka Defterine kaydet?", default=True):
-        save_title = Prompt.ask("Baslik", default="Sistem Guvenlik Check-up Raporu")
-        note_id = add_note(
-            title=save_title,
-            content=full_report,
-            category="secops",
-            tags="checkup,hardening",
-        )
-        console.print(f"[bold green][+][/bold green] Kaydedildi (#{note_id})\n")
-
-
-def interactive_intel(inline_target: str = "") -> None:
-    target = inline_target.strip()
-    if not target:
-        target = Prompt.ask("\nSorgulanacak dis IP adresi, log metni veya dosya yolu").strip()
-    if not target:
-        return
-
-    potential_file = Path(target).expanduser()
-    if potential_file.exists() and potential_file.is_file():
-        raw_text = potential_file.read_text(encoding="utf-8", errors="replace")
-    else:
-        raw_text = target
-
-    console.print("\n[bold cyan][*][/bold cyan] Shodan InternetDB & GeoIP tehdit istihbarati sorgulaniyor...")
-    report_md = format_intel_report(raw_text, max_ips=10)
-    console.print()
-    console.print(Padding(Markdown(report_md, code_theme="monokai"), (0, 1)))
-    console.print()
-
-
-def interactive_baseline(label: str = "default") -> None:
-    clean_label = label.strip() or "default"
-    console.print(f"\n[bold cyan][*][/bold cyan] Sistem referans goruntusu (baseline: '{clean_label}') aliniyor...")
-    record = save_baseline(label=clean_label)
-    snap = record["snapshot"]
-    console.print(
-        f"[bold green][+][/bold green] Baseline #{record['id']} kaydedildi ({record['created_at']})\n"
-        f"    Dinlenen Port: [cyan]{len(snap['ports'])}[/cyan] | "
-        f"Aktif Servis: [cyan]{len(snap['services'])}[/cyan] | "
-        f"SHA256 Dosya: [cyan]{len(snap['file_hashes'])}[/cyan]\n"
-    )
-
-
-def interactive_diff(analyze_with_ai: bool = False) -> None:
-    console.print("\n[bold cyan][*][/bold cyan] Mevcut sistem durumu son baseline ile karsilastiriliyor...")
-    diff = compare_with_baseline()
-    report_md = format_baseline_diff_report(diff)
-    console.print()
-    console.print(Padding(Markdown(report_md, code_theme="monokai"), (0, 1)))
-    console.print()
-
-    if analyze_with_ai and diff.get("has_baseline") and diff.get("has_drift"):
-        prompt = (
-            "Asagida sistemin temiz baseline kaydi ile su anki durumu arasindaki farklar (drift/anomali) yer almaktadir.\n"
-            "Yeni acilan portlari, servisleri veya degisen dosyalari guvenlik acisindan degerlendir:\n\n"
-            f"{report_md}"
-        )
-        try:
-            gen = stream_generate(prompt=prompt)
-            _stream_markdown_from_generator(gen)
-        except OllamaConnectionError as err:
-            console.print(f"\n[bold red][-][/bold red] {err}\n")
-
-
-def interactive_hardening_score(analyze_with_ai: bool = False) -> None:
-    console.print("\n[bold cyan][*][/bold cyan] Deterministik CIS Linux Guvenlik & Sikilastirma denetimi yapiliyor...")
-    res = calculate_hardening_score()
-    report_md = format_hardening_report(res)
-    console.print()
-    console.print(Padding(Markdown(report_md, code_theme="monokai"), (0, 1)))
-    console.print()
-
-    if analyze_with_ai:
-        prompt = (
-            "Asagida kullanicinin sisteminden alinan deterministik CIS Guvenlik ve Sikilastirma (Hardening) tablosu yer almaktadir.\n"
-            "Basarisiz (FAIL/WARN) olan maddeleri nasil kapatabilecegini kisa ve uygulanabilir komutlarla acikla:\n\n"
-            f"{report_md}"
-        )
-        try:
-            gen = stream_generate(prompt=prompt)
-            _stream_markdown_from_generator(gen)
-        except OllamaConnectionError as err:
-            console.print(f"\n[bold red][-][/bold red] {err}\n")
-
-
-def interactive_audit(inline_target: str = "") -> None:
-    source = inline_target.strip()
-    if not source:
-        source = Prompt.ask("\nAnaliz edilecek dosya yolu veya log metni").strip()
-    if not source:
-        return
-
-    potential_file = Path(source).expanduser()
-    if potential_file.exists() and potential_file.is_file():
-        raw_input = potential_file.read_text(encoding="utf-8", errors="replace")
-        label = potential_file.name
-    else:
-        raw_input = source
-        label = "manuel-giris"
-
-    llm_info = get_active_llm_info()
-    console.print(f"\n[bold cyan][*][/bold cyan] kaynak: {label} | model: {llm_info['model']}")
-
-    iocs = extract_iocs(raw_input)
-    intel_block = ""
-    if iocs["ips"] or iocs["cves"] or iocs["sha256"]:
-        console.print(
-            f"[bold cyan][*][/bold cyan] IOC tespit edildi ({len(iocs['ips'])} dis IP, {len(iocs['cves'])} CVE) — Shodan InternetDB sorgulaniyor..."
-        )
-        intel_md = format_intel_report(raw_input, max_ips=6)
-        console.print()
-        console.print(Padding(Markdown(intel_md, code_theme="monokai"), (0, 1)))
-        intel_block = f"\n\n[OTOMATIK SHODAN & IOC TEHDIT ISTIHBARATI]:\n{intel_md}"
-
-    prompt = (
-        "Asagidaki log, komut ciktisi veya kod blogunu guvenlik acisindan analiz et:\n\n"
-        f"```\n{raw_input}\n```{intel_block}"
-    )
-    try:
-        gen = stream_generate(prompt=prompt)
-        analysis = _stream_markdown_from_generator(gen)
-    except OllamaConnectionError as err:
-        console.print(f"\n[bold red][-][/bold red] {err}\n")
-        return
-
-    if analysis and Confirm.ask("Sonucu deftere kaydet?", default=True):
-        save_title = Prompt.ask("Baslik", default=f"audit-{label}")
-        note_id = add_note(
-            title=save_title,
-            content=analysis,
-            category="secops",
-            tags="audit",
-        )
-        console.print(f"[bold green][+][/bold green] Kaydedildi (#{note_id})\n")
-
-
-def generate_session_report(session: str = "default") -> None:
-    history = get_chat_history(session_id=session, limit=40)
-    if not history:
-        console.print("\n[yellow][!][/yellow] Rapor olusturmak icin henuz yeterli oturum verisi yok.\n")
-        return
-
-    console.print("\n[bold cyan][*][/bold cyan] Oturum verilerinden resmi SecOps raporu hazirlaniyor...")
-    transcript = "\n\n".join(f"[{m['role'].upper()}]:\n{m['content']}" for m in history)
-    prompt = (
-        "Asagidaki SecOps oturum gecmisini ve bulgularini kullanarak profesyonel, resmi bir "
-        "**Siber Guvenlik Degerlendirme ve Vaka Raporu** hazirla.\n"
-        "Raporda su bolumler yer alsin:\n"
-        "1. Yonetici Ozeti\n"
-        "2. Incelenen Sistem ve Kapsam\n"
-        "3. Tespit Edilen Bulgular & Acik Portlar (Tablo halinde)\n"
-        "4. Risk Degerlendirmesi\n"
-        "5. Sikilastirma (Hardening) ve Cozum Onerileri\n\n"
-        f"OTURUM VERILERI:\n{transcript[:16000]}"
-    )
-
-    try:
-        gen = stream_generate(prompt=prompt)
-        report_md = _stream_markdown_from_generator(gen)
-    except OllamaConnectionError as err:
-        console.print(f"\n[bold red][-][/bold red] {err}\n")
-        return
-
-    if report_md:
-        nid = add_note(
-            title="SecOps Degerlendirme Raporu",
-            content=report_md,
-            category="secops",
-            tags="report,secops",
-        )
-        md_path = export_note_markdown(nid)
-        from secai.core.pdf_report import generate_note_pdf_report
-        try:
-            pdf_path = generate_note_pdf_report(nid)
-            console.print(
-                f"[bold green][+][/bold green] Rapor Vaka Defterine kaydedildi (#{nid}).\n"
-                f"    • [bold cyan]Kurumsal PDF Raporu:[/bold cyan] [bold green]{pdf_path}[/bold green]\n"
-                f"    • [dim]Markdown:[/dim] [cyan]{md_path}[/cyan]\n"
-            )
-            import shutil, subprocess
-            if shutil.which("xdg-open"):
-                subprocess.Popen(["xdg-open", str(pdf_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception as e:
-            console.print(
-                f"[bold green][+][/bold green] Rapor Vaka Defterine kaydedildi (#{nid}) ve Markdown olarak disa aktarildi:\n"
-                f"    [cyan]{md_path}[/cyan] (PDF Hatasi: {e})\n"
-            )
+# Geriye dönük uyumluluk için aliaslar:
+_stream_markdown_from_generator = stream_markdown_from_generator
+_setup_readline = setup_readline
+_save_readline_history = save_readline_history
 
 
 def _stream_reply(messages: list[dict]) -> str:
+    """Aktif LLM motorundan gelen yanıtı ekranda Markdown paneli olarak canlı akıtır."""
     gen = stream_chat(messages=messages)
-    return _stream_markdown_from_generator(gen)
-
-
-def manage_voice_settings(inline_arg: str = "") -> None:
-    s = load_settings()
-    arg = inline_arg.strip().lower()
-    if arg in ("on", "ac", "aç", "aktif", "1"):
-        save_settings({"tts_enabled": True})
-        render_top_banner()
-        console.print("[bold green][+][/bold green] Sesli yanit modu acildi (Tum yanitlar seslendirilecek).\n")
-        return
-    if arg in ("off", "kapat", "pasif", "0"):
-        save_settings({"tts_enabled": False})
-        render_top_banner()
-        console.print("[bold green][+][/bold green] Sesli yanit modu kapatildi.\n")
-        return
-    if arg in ("ahmet", "erkek"):
-        save_settings({"tts_voice": "tr-TR-AhmetNeural"})
-        console.print("[bold green][+][/bold green] Asistan sesi: [cyan]Ahmet (Erkek)[/cyan]\n")
-        return
-    if arg in ("emel", "kadin", "kadın"):
-        save_settings({"tts_voice": "tr-TR-EmelNeural"})
-        console.print("[bold green][+][/bold green] Asistan sesi: [cyan]Emel (Kadin)[/cyan]\n")
-        return
-
-    tts_on = bool(s.get("tts_enabled", False))
-    cur_voice = s.get("tts_voice", "tr-TR-AhmetNeural")
-
-    console.print("\n[bold white]SecAI Ses & Konusma Ayarlari[/bold white]")
-    status_str = "[bold green]ACIK[/bold green]" if tts_on else "[dim]KAPALI[/dim]"
-    console.print(f"  [cyan]1[/cyan]  Yazili Sohbette Sesli Yanit (Su an: {status_str})")
-    for idx, (v_id, v_desc) in enumerate(VOICE_PROFILES.items(), start=2):
-        mark = " [bold green][AKTIF][/bold green]" if cur_voice == v_id else ""
-        console.print(f"  [cyan]{idx}[/cyan]  {v_desc}{mark}")
-    console.print("  [cyan]4[/cyan]  Canli Sesli Diyalog (Telsiz Modu — /voice) Baslat")
-    console.print("  [cyan]0[/cyan]  Iptal\n")
-
-    choice = Prompt.ask("Secim", choices=["1", "2", "3", "4", "0"], default="0")
-    if choice == "1":
-        save_settings({"tts_enabled": not tts_on})
-        render_top_banner()
-        new_lbl = "ACILDI" if not tts_on else "KAPATILDI"
-        console.print(f"[bold green][+][/bold green] Sesli yanit modu {new_lbl}.\n")
-    elif choice == "2":
-        save_settings({"tts_voice": "tr-TR-AhmetNeural"})
-        console.print("[bold green][+][/bold green] Asistan sesi: [cyan]Ahmet (Erkek)[/cyan]\n")
-    elif choice == "3":
-        save_settings({"tts_voice": "tr-TR-EmelNeural"})
-        console.print("[bold green][+][/bold green] Asistan sesi: [cyan]Emel (Kadin)[/cyan]\n")
-    elif choice == "4":
-        interactive_voice_loop(session="default")
+    return stream_markdown_from_generator(gen)
 
 
 def _run_agent_turn(user_input: str, session: str = "default", force_speak: bool = False) -> str:
     """
-    Kullanici mesajini alir, AI yanitini akitir, çok adimli ajan dongusunu (notlar, web arama,
-    Shodan intel, SecOps motorlari ve bash komutlari) calistirir ve seslendirme aktifse konusur.
+    Kullanıcı mesajını alır, AI yanıtını akıtır, çok adımlı ajan döngüsünü (notlar, web arama,
+    Shodan intel, SecOps motorları ve bash komutları) çalıştırır ve seslendirme aktifse konuşur.
     """
     should_speak = force_speak or bool(load_settings().get("tts_enabled", False))
     expanded_input = expand_file_references(user_input)
@@ -1142,7 +125,7 @@ def _run_agent_turn(user_input: str, session: str = "default", force_speak: bool
             content=clean_reply_for_history or last_assistant_reply,
         )
 
-        # Dogal dille not kaydetme istegi varsa otomatik veritabanina kaydet
+        # 1. Doğal dille not kaydetme isteği varsa otomatik veritabanına kaydet
         auto_notes = extract_saved_notes(last_assistant_reply)
         for an in auto_notes:
             nid = add_note(
@@ -1155,23 +138,23 @@ def _run_agent_turn(user_input: str, session: str = "default", force_speak: bool
                 f"[bold green][+][/bold green] Deftere kaydedildi (#{nid} — {an['title']} [{an['category']}])\n"
             )
 
-        # Dogal dille not guncelleme / silme / markdown disa aktarma
+        # 2. Doğal dille not güncelleme / silme / markdown dışa aktarma
         for act in extract_note_actions(last_assistant_reply):
             nid = int(act["id"])
             if act["action"] == "update-note" and act["content"]:
                 if update_note(note_id=nid, content=act["content"], append=True):
-                    console.print(f"[bold green][+][/bold green] Not #{nid} guncellendi.\n")
+                    console.print(f"[bold green][+][/bold green] Not #{nid} güncellendi.\n")
             elif act["action"] == "delete-note":
                 if delete_note(nid):
                     console.print(f"[bold green][+][/bold green] Not #{nid} silindi.\n")
             elif act["action"] == "export-note":
                 try:
                     md_path = export_note_markdown(nid)
-                    console.print(f"[bold green][+][/bold green] Markdown rapor hazir: {md_path}\n")
+                    console.print(f"[bold green][+][/bold green] Markdown rapor hazır: {md_path}\n")
                 except ValueError:
                     pass
 
-        # ChatGPT Memory Tarzi Kalici Profil & Bellek Islemleri
+        # 3. ChatGPT Memory Tarzı Kalıcı Profil & Bellek İşlemleri
         for m_act in extract_memory_actions(last_assistant_reply):
             if m_act["action"] == "remember":
                 save_memory(key=m_act["key"], fact=m_act["fact"])
@@ -1180,18 +163,18 @@ def _run_agent_turn(user_input: str, session: str = "default", force_speak: bool
                 if delete_memory(m_act["key"]):
                     console.print(f"[bold magenta][🧠 Bellekten Silindi][/bold magenta] '{m_act['key']}'\n")
 
-        # Otomatik Canli Web Aramasi
+        # 4. Otomatik Canlı Web Araması
         web_queries = extract_web_searches(last_assistant_reply)
         if web_queries:
             wq = web_queries[0]
-            console.print(f"[bold cyan][*][/bold cyan] Web'de araniyor: [white]{wq}[/white]")
+            console.print(f"[bold cyan][*][/bold cyan] Web'de aranıyor: [white]{wq}[/white]")
             web_report = format_web_results(wq, max_results=6)
             add_chat_message(
                 session_id=session,
                 role="user",
                 content=(
                     f"{web_report}\n\n"
-                    "Yukaridaki canli web arama sonuclarini kullanarak kullanicinin sorusunu detayli ve kaynak linkleriyle yanitla (tekrar web-search blogu yazma)."
+                    "Yukarıdaki canlı web arama sonuçlarını kullanarak kullanıcının sorusunu detaylı ve kaynak linkleriyle yanıtla (tekrar web-search bloğu yazma)."
                 ),
             )
             try:
@@ -1201,18 +184,18 @@ def _run_agent_turn(user_input: str, session: str = "default", force_speak: bool
             except (KeyboardInterrupt, EOFError, OllamaConnectionError):
                 break
 
-        # Otomatik Shodan InternetDB & GeoIP Tehdit Istihbarati Sorgusu
+        # 5. Otomatik Shodan InternetDB & GeoIP Tehdit İstihbaratı Sorgusu
         intel_queries = extract_intel_queries(last_assistant_reply)
         if intel_queries:
             iq = "\n".join(intel_queries)
-            console.print("[bold cyan][*][/bold cyan] Shodan InternetDB & GeoIP tehdit istihbarati sorgulaniyor...")
+            console.print("[bold cyan][*][/bold cyan] Shodan InternetDB & GeoIP tehdit istihbaratı sorgulanıyor...")
             intel_report = format_intel_report(iq, max_ips=8)
             add_chat_message(
                 session_id=session,
                 role="user",
                 content=(
                     f"{intel_report}\n\n"
-                    "Yukaridaki gercek Shodan InternetDB ve GeoIP istihbarat sonuclarini kullanarak kullaniciya detayli bir tehdit analizi sun (tekrar intel-lookup blogu yazma)."
+                    "Yukarıdaki gerçek Shodan InternetDB ve GeoIP istihbarat sonuçlarını kullanarak kullanıcıya detaylı bir tehdit analizi sun (tekrar intel-lookup bloğu yazma)."
                 ),
             )
             try:
@@ -1222,7 +205,7 @@ def _run_agent_turn(user_input: str, session: str = "default", force_speak: bool
             except (KeyboardInterrupt, EOFError, OllamaConnectionError):
                 break
 
-        # Otomatik SecOps Motorlari (baseline, diff, score)
+        # 6. Otomatik SecOps Motorları (baseline, diff, score)
         secops_acts = extract_secops_actions(last_assistant_reply)
         if secops_acts:
             act = secops_acts[0]
@@ -1232,25 +215,31 @@ def _run_agent_turn(user_input: str, session: str = "default", force_speak: bool
             elif act == "diff":
                 diff_data = compare_with_baseline()
                 diff_md = format_baseline_diff_report(diff_data)
+                from rich.padding import Padding
+                from rich.markdown import Markdown
+
                 console.print(Padding(Markdown(diff_md, code_theme="monokai"), (0, 1)))
                 add_chat_message(
                     session_id=session,
                     role="user",
                     content=(
                         f"{diff_md}\n\n"
-                        "Yukaridaki sistem baseline karsilastirma (drift) raporunu degerlendir ve varsa anomalileri acikla (tekrar secops-action blogu yazma)."
+                        "Yukarıdaki sistem baseline karşılaştırma (drift) raporunu değerlendir ve varsa anomalileri açıkla (tekrar secops-action bloğu yazma)."
                     ),
                 )
             elif act in ("score", "harden"):
                 score_data = calculate_hardening_score()
                 score_md = format_hardening_report(score_data)
+                from rich.padding import Padding
+                from rich.markdown import Markdown
+
                 console.print(Padding(Markdown(score_md, code_theme="monokai"), (0, 1)))
                 add_chat_message(
                     session_id=session,
                     role="user",
                     content=(
                         f"{score_md}\n\n"
-                        "Yukaridaki deterministik CIS guvenlik skoru tablosundaki eksikleri (FAIL/WARN) nasil kapatabilecegimizi ozetle (tekrar secops-action blogu yazma)."
+                        "Yukarıdaki deterministik CIS güvenlik skoru tablosundaki eksikleri (FAIL/WARN) nasıl kapatabileceğimizi özetle (tekrar secops-action bloğu yazma)."
                     ),
                 )
             try:
@@ -1260,6 +249,7 @@ def _run_agent_turn(user_input: str, session: str = "default", force_speak: bool
             except (KeyboardInterrupt, EOFError, OllamaConnectionError):
                 break
 
+        # 7. Sistem Bash Komutları Çalıştırma
         commands = extract_shell_commands(last_assistant_reply)
         if not commands:
             if should_speak and last_assistant_reply:
@@ -1278,8 +268,8 @@ def _run_agent_turn(user_input: str, session: str = "default", force_speak: bool
                     session_id=session,
                     role="user",
                     content=(
-                        f"[Komut Ciktisi ('{cmd}')]:\n{trimmed_out}\n\n"
-                        "Yukaridaki komut ciktisini analiz et. Eger komut hata verdiyse veya islemi tamamlamak icin 2. bir komut gerekiyorsa yeni ```bash blogu ver; islem tamamlandiysa sonucu tablo/maddelerle ozetle."
+                        f"[Komut Çıktısı ('{cmd}')]:\n{trimmed_out}\n\n"
+                        "Yukarıdaki komut çıktısını analiz et. Eğer komut hata verdiyse veya işlemi tamamlamak için 2. bir komut gerekiyorsa yeni ```bash bloğu ver; işlem tamamlandıysa sonucu tablo/maddelerle özetle."
                     ),
                 )
                 try:
@@ -1292,48 +282,18 @@ def _run_agent_turn(user_input: str, session: str = "default", force_speak: bool
     return final_reply
 
 
-def interactive_push_to_talk(session: str = "default") -> str:
-    """Tek seferlik Bas-Konus (mikrofonu dinler, metne cevirir, yanitlar ve sesli konusur)."""
-    wav_path = record_voice_input()
-    if not wav_path:
-        return ""
-    transcript = transcribe_voice(wav_path)
-    if not transcript:
-        console.print("[yellow][!] Konusma anlasilamadi, tekrar deneyin.[/yellow]\n")
-        return ""
-
-    console.print(f"\n[bold cyan][Sen (Sesli)]:[/bold cyan] [bold white]{transcript}[/bold white]")
-    return _run_agent_turn(transcript, session=session, force_speak=True)
-
-
-def interactive_voice_loop(session: str = "default") -> None:
-    """Karsilikli kesintisiz Canli Sesli Diyalog (Telsiz) Modu."""
-    console.print(
-        "\n[bold cyan][*] CANLI SESLI DIYALOG (TELSIZ) MODU AKTIF[/bold cyan]\n"
-        "[dim]Konusup ENTER'a basin, SecAI hem ekranda gosterecek hem de sesli yanitlayacaktir. Cikmak icin 'q' yazin.[/dim]"
-    )
-    while True:
-        reply = interactive_push_to_talk(session=session)
-        try:
-            cont = console.input(
-                "\n[bold cyan][Sesli Diyalog][/bold cyan] Yeni soz icin [bold white]ENTER[/bold white]'a basin [dim](Cikis icin 'q')[/dim]: "
-            ).strip().lower()
-        except (KeyboardInterrupt, EOFError):
-            console.print("\n[dim][*] Sesli diyalog modundan cikildi.[/dim]\n")
-            break
-        if cont in ("q", "quit", "exit", "cikis", "çıkış"):
-            console.print("[dim][*] Sesli diyalog modundan cikildi.[/dim]\n")
-            break
-    let_unused = reply
-    _ = let_unused
-
-
 def run_interactive_menu(status_callback=None) -> None:
-    """Antigravity CLI tarzı tam ekran temiz çalışma alanı."""
-    session = "default"
-    last_assistant_reply = ""
-    history_file = _setup_readline()
+    """Antigravity CLI tarzı tam ekran temiz çalışma alanı ana döngüsü."""
+    dispatcher = CommandDispatcher(agent_turn_fn=_run_agent_turn)
+    history_file = setup_readline()
     render_top_banner()
+
+    state = {
+        "session": "default",
+        "last_assistant_reply": "",
+        "status_callback": status_callback,
+        "should_exit": False,
+    }
 
     try:
         while True:
@@ -1346,234 +306,19 @@ def run_interactive_menu(status_callback=None) -> None:
             if not user_input:
                 continue
 
-            low = user_input.lower().strip()
-
-            # Kullanici dogrudan AIza... veya AQ.... ile baslayan Gemini API anahtarini yapistirdiysa otomatik tani
-            if (user_input.startswith("AIza") or user_input.startswith("AQ.")) and len(user_input.split()) == 1 and len(user_input) >= 30:
-                configure_api_key(inline_key=user_input)
-                continue
-
-            if low in ("q", "quit", "exit", "/exit", "/q", "cikis", "çıkış"):
+            # Komutu Dispatcher'a ilet
+            handled = dispatcher.dispatch(user_input, state)
+            if state["should_exit"]:
                 break
-
-            if low in ("?", "/help", "help", "yardim", "yardım", "menu", "menü"):
-                show_shortcuts()
+            if handled:
                 continue
 
-            if low in ("/clear", "clear", "temizle"):
-                clear_chat_history(session_id=session)
-                render_top_banner()
-                console.print(f"[bold green][+][/bold green] '{session}' sohbet gecmisi temizlendi.\n")
-                continue
-
-            if low in ("/new", "/yeni", "new", "yeni"):
-                import uuid
-                session = f"chat_{uuid.uuid4().hex[:6]}"
-                create_session(session, "Yeni Sohbet")
-                render_top_banner()
-                console.print(f"[bold green][+][/bold green] Yeni sohbet oturumu baslatildi: [cyan]{session}[/cyan]\n")
-                continue
-
-            if low in ("/chats", "/sessions", "chats", "sohbetler"):
-                s_list = list_sessions()
-                console.print("\n[bold white]Kayitli Sohbet Oturumlari[/bold white]")
-                for s_item in s_list:
-                    cur_mark = " [bold green][AKTIF][/bold green]" if s_item["id"] == session else ""
-                    console.print(f"  • [cyan]{s_item['id']:<14}[/cyan] '{s_item['title']}' ({s_item['msg_count']} mesaj, {s_item['updated_at']}){cur_mark}")
-                console.print("\n[dim]Gecis yapmak icin: /chat <id> | Baslik degistirmek icin: /rename <yeni isim>[/dim]\n")
-                continue
-
-            if (
-                low in ("/rename", "/title", "/baslik", "rename", "title", "baslik")
-                or low.startswith(("/rename ", "/title ", "/baslik ", "rename ", "title ", "baslik "))
-            ):
-                parts = user_input.split(maxsplit=1)
-                new_title = parts[1].strip() if len(parts) > 1 else ""
-                if not new_title:
-                    new_title = Prompt.ask("\n[bold cyan]Yeni Sohbet Başlığı[/bold cyan]").strip()
-                if new_title:
-                    update_session_title(session, new_title)
-                    console.print(f"\n[bold green]✓ Sohbet başlığı güncellendi:[/bold green] [cyan]{new_title}[/cyan]\n")
-                continue
-
-            if low.startswith("/chat ") or low.startswith("chat "):
-                target_sess = user_input.split(maxsplit=1)[1].strip()
-                if target_sess:
-                    session = target_sess
-                    create_session(session, target_sess)
-                    render_top_banner()
-                    console.print(f"[bold green][+][/bold green] Oturuma gecildi: [cyan]{session}[/cyan]\n")
-                continue
-
-            if (
-                low in ("/infomy", "/myinfo", "infomy", "myinfo", "/kimim", "kimim")
-                or low.startswith(("/infomy ", "/myinfo ", "infomy ", "myinfo ", "/kimim ", "kimim "))
-            ):
-                parts = user_input.split(maxsplit=1)
-                arg = parts[1].strip() if len(parts) > 1 else ""
-                manage_infomy_interactive(inline_info=arg)
-                continue
-
-            if (
-                low in ("/image", "/img", "/ciz", "/gorsel", "/görsel", "image", "img", "ciz", "gorsel", "görsel")
-                or low.startswith(("/image ", "/img ", "/ciz ", "/gorsel ", "/görsel ", "image ", "img ", "ciz ", "gorsel ", "görsel "))
-            ):
-                parts = user_input.split(maxsplit=1)
-                arg = parts[1].strip() if len(parts) > 1 else ""
-                manage_image_interactive(prompt=arg)
-                continue
-
-            if low in ("/memory", "/bellek", "memory", "bellek"):
-                mems = list_memories()
-                if not mems:
-                    console.print("\n[dim]SecAI tarafindan henuz kaydedilmis kisisel bir bellek yok.[/dim]\n")
-                else:
-                    console.print("\n[bold magenta]SecAI Kalici Profil & Bellek (ChatGPT Memory):[/bold magenta]")
-                    for m in mems:
-                        console.print(f"  • [cyan]{m['key']}:[/cyan] {m['fact']} [dim]({m['created_at']})[/dim]")
-                    console.print("\n[dim]Bellekten silmek icin: /forget <anahtar>[/dim]\n")
-                continue
-
-            if low.startswith("/forget ") or low.startswith("forget "):
-                k = user_input.split(maxsplit=1)[1].strip()
-                if delete_memory(k):
-                    console.print(f"[bold green][+][/bold green] '{k}' bellekten silindi.\n")
-                else:
-                    console.print(f"[yellow][!] '{k}' anahtarli bellek bulunamadi.[/yellow]\n")
-                continue
-
-            if low in ("/v", "/talk", "talk", "konus", "konuş", "dinle"):
-                reply = interactive_push_to_talk(session=session)
-                if reply:
-                    last_assistant_reply = reply
-                continue
-
-            if low in ("/web", "web", "gui"):
-                from secai.web.server import run_web_server
-                console.print("\n[bold cyan][*][/bold cyan] Web arayuzu baslatiliyor...")
-                run_web_server(port=8765, open_browser=True)
-                continue
-
-            if low in ("/voice", "voice", "telsiz", "sesli mod", "sesli sohbet"):
-                interactive_voice_loop(session=session)
-                continue
-
-            if low in ("/ses", "/tts", "ses", "tts") or low.startswith("/ses ") or low.startswith("/tts "):
-                parts = user_input.split(maxsplit=1)
-                arg = parts[1] if len(parts) > 1 else ""
-                manage_voice_settings(inline_arg=arg)
-                continue
-
-            if low in ("api", "key", "/api", "/key") or low.startswith("/api ") or low.startswith("/key ") or low.startswith("api "):
-                parts = user_input.split(maxsplit=1)
-                inline_key = parts[1] if len(parts) > 1 else ""
-                configure_api_key(inline_key=inline_key)
-                continue
-
-            if low in ("/model", "/models", "model", "models", "motor"):
-                switch_model_interactive()
-                continue
-
-            if (
-                low in ("/agent", "/agents", "agent", "agents", "/ajan", "ajan", "/skills", "/skill", "skills", "skill", "yetenek")
-                or low.startswith(("/agent ", "agent ", "/ajan ", "ajan ", "/skill ", "skill "))
-            ):
-                parts = user_input.split(maxsplit=1)
-                arg = parts[1] if len(parts) > 1 else ""
-                manage_skills_interactive(inline_arg=arg)
-                continue
-
-            if low in ("/check",):
-                interactive_security_checkup(require_confirm=True)
-                continue
-
-            if low.startswith("/intel") or low.startswith("intel "):
-                parts = user_input.split(maxsplit=1)
-                target = parts[1] if len(parts) > 1 else ""
-                interactive_intel(inline_target=target)
-                continue
-
-            if low in ("/vt", "/virustotal") or low.startswith(("/vt ", "/virustotal ")):
-                parts = user_input.split(maxsplit=1)
-                target = parts[1] if len(parts) > 1 else ""
-                interactive_vt(inline_target=target)
-                continue
-
-            if low in ("/abuse", "/abuseipdb") or low.startswith(("/abuse ", "/abuseipdb ")):
-                parts = user_input.split(maxsplit=1)
-                ip = parts[1] if len(parts) > 1 else ""
-                interactive_abuse(inline_ip=ip)
-                continue
-
-            if low.startswith("/baseline") or low == "baseline":
-                parts = user_input.split(maxsplit=1)
-                lbl = parts[1] if len(parts) > 1 else "default"
-                interactive_baseline(label=lbl)
-                continue
-
-            if low in ("/diff", "diff"):
-                interactive_diff(analyze_with_ai=True)
-                continue
-
-            if low in ("/score", "/harden", "score", "harden"):
-                interactive_hardening_score(analyze_with_ai=False)
-                continue
-
-            if low in ("/notes", "/list", "/defter"):
-                interactive_list_and_read()
-                continue
-
-            if low in ("/add",):
-                interactive_add_note()
-                continue
-
-            if low in ("/edit",):
-                interactive_edit_note()
-                continue
-
-            if low in ("/backup",):
-                b_path = backup_database()
-                console.print(f"\n[bold green][+][/bold green] Yedek alindi: {b_path}\n")
-                continue
-
-            if low in ("/restore",):
-                interactive_restore_backup()
-                continue
-
-            if low in ("/status", "durum") and status_callback:
-                console.print()
-                status_callback()
-                console.print()
-                continue
-
-            if low in ("/report", "rapor", "rapor cikar", "rapor oluştur"):
-                generate_session_report(session=session)
-                continue
-
-            if low.startswith("/audit"):
-                parts = user_input.split(maxsplit=1)
-                target = parts[1] if len(parts) > 1 else ""
-                interactive_audit(inline_target=target)
-                continue
-
-            if low.startswith("/save"):
-                title = user_input[5:].strip() or f"not-{session}"
-                if not last_assistant_reply:
-                    console.print("\n[yellow][!][/yellow] Henuz kaydedilecek bir yanit yok.\n")
-                    continue
-                note_id = add_note(
-                    title=title,
-                    content=last_assistant_reply,
-                    category="secops",
-                    tags="chat",
-                )
-                console.print(f"\n[bold green][+][/bold green] Deftere kaydedildi (#{note_id} - {title})\n")
-                continue
-
-            last_assistant_reply = _run_agent_turn(user_input, session=session, force_speak=False)
+            # Normal mesaj: Çok adımlı ajanı tetikle
+            session = state["session"]
+            state["last_assistant_reply"] = _run_agent_turn(user_input, session=session, force_speak=False)
             try:
                 auto_title_session(session)
             except Exception:
                 pass
     finally:
-        _save_readline_history(history_file)
+        save_readline_history(history_file)
