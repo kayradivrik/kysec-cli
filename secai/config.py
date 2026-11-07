@@ -14,6 +14,10 @@ DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
 DEFAULT_DEEPSEEK_MODEL = "deepseek-reasoner"
 DEFAULT_OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 DEFAULT_TTS_VOICE = "tr-TR-AhmetNeural"
+DEFAULT_NUM_CTX = 8192  # 8192 veya 16384 token güvenli analiz penceresi
+DEFAULT_TEMPERATURE = 0.2  # Deterministik, sıfır-halüsinasyon teknik analiz
+DEFAULT_SMART_MODE = True  # Karmaşık analizlerde akıllı model önerisi ve yönlendirme
+
 
 GROQ_MODELS = [
     "openai/gpt-oss-120b",
@@ -90,6 +94,9 @@ def load_settings() -> dict:
         "abuseipdb_api_key": os.environ.get("ABUSEIPDB_API_KEY", ""),
         "ollama_model": DEFAULT_OLLAMA_MODEL,
         "ollama_url": DEFAULT_OLLAMA_URL,
+        "ollama_num_ctx": DEFAULT_NUM_CTX,
+        "temperature": DEFAULT_TEMPERATURE,
+        "smart_mode": DEFAULT_SMART_MODE,
         "tts_enabled": False,
         "tts_voice": DEFAULT_TTS_VOICE,
         "tts_rate": "+8%",
@@ -135,6 +142,12 @@ def get_active_llm_info() -> dict:
     deepseek_key = s.get("deepseek_api_key", "").strip()
     openrouter_key = s.get("openrouter_api_key", "").strip()
 
+    common_opts = {
+        "temperature": float(s.get("temperature", DEFAULT_TEMPERATURE)),
+        "num_ctx": int(s.get("ollama_num_ctx", DEFAULT_NUM_CTX)),
+        "smart_mode": bool(s.get("smart_mode", DEFAULT_SMART_MODE)),
+    }
+
     if provider == "groq" and groq_key:
         return {
             "provider": "groq",
@@ -142,6 +155,7 @@ def get_active_llm_info() -> dict:
             "model": s.get("groq_model", DEFAULT_GROQ_MODEL),
             "api_key": groq_key,
             "ollama_url": s.get("ollama_url", DEFAULT_OLLAMA_URL),
+            **common_opts,
         }
     if provider == "deepseek" and deepseek_key:
         return {
@@ -150,6 +164,7 @@ def get_active_llm_info() -> dict:
             "model": s.get("deepseek_model", DEFAULT_DEEPSEEK_MODEL),
             "api_key": deepseek_key,
             "ollama_url": s.get("ollama_url", DEFAULT_OLLAMA_URL),
+            **common_opts,
         }
     if provider == "openrouter" and openrouter_key:
         return {
@@ -158,6 +173,7 @@ def get_active_llm_info() -> dict:
             "model": s.get("openrouter_model", DEFAULT_OPENROUTER_MODEL),
             "api_key": openrouter_key,
             "ollama_url": s.get("ollama_url", DEFAULT_OLLAMA_URL),
+            **common_opts,
         }
     if provider == "gemini" and gemini_key:
         return {
@@ -166,6 +182,7 @@ def get_active_llm_info() -> dict:
             "model": s.get("gemini_model", DEFAULT_GEMINI_MODEL),
             "api_key": gemini_key,
             "ollama_url": s.get("ollama_url", DEFAULT_OLLAMA_URL),
+            **common_opts,
         }
 
     return {
@@ -174,6 +191,7 @@ def get_active_llm_info() -> dict:
         "model": s.get("ollama_model", DEFAULT_OLLAMA_MODEL),
         "api_key": gemini_key or groq_key or deepseek_key or openrouter_key,
         "ollama_url": s.get("ollama_url", DEFAULT_OLLAMA_URL),
+        **common_opts,
     }
 
 

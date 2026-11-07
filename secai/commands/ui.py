@@ -77,6 +77,10 @@ SLASH_COMMANDS = [
     "/model",
     "/models",
     "/motor",
+    "/smart",
+    "/smartmode",
+    "/analyze",
+    "/run",
     "/api",
     "/key",
 ]
@@ -200,6 +204,9 @@ def show_shortcuts() -> None:
     table.add_row("/ses veya /tts", "Ses ayarlarini yonet (Ahmet/Emel ses secimi, yazili sohbette ses ac/kapat)")
     table.add_row("/api", "API Anahtarlarını yönet (Groq, DeepSeek, Gemini, OpenRouter, VT, Abuse)")
     table.add_row("/model", "Aktif AI Motorunu değiştir (Groq 500t/s, DeepSeek R1, Gemini, Ollama)")
+    table.add_row("/smart", "Smart Mode: Karmaşık tersine mühendislik / exploit analizlerinde akıllı model önerici")
+    table.add_row("/analyze <dosya/komut>", "Dosyayı güvenli chunking ile oku veya çıktıyı kıdemli analist promptuyla incele")
+    table.add_row("/run <komut>", "Sistem komutunu alt süreçte çalıştır ve sonucunu güvenlik analisti gözüyle analiz et")
     table.add_row("/skills", "SecOps yeteneklerini (recon, hardening, detection, ctf) sec veya yeni skill ekle")
     table.add_row("/intel <ip/log>", "Shodan InternetDB & GeoIP ile IP/CVE/Hash tehdit istihbarati sorgula")
     table.add_row("/vt <hedef>", "VirusTotal v3 ile IP, Domain veya Hash (MD5/SHA256) güvenlik taraması")

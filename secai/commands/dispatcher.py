@@ -267,6 +267,82 @@ class CommandDispatcher:
             interactive_audit(inline_target=target)
             return True
 
+        # 12b. Güvenli Dosya & Çıktı Analizi (/analyze)
+        if low == "/analyze" or low.startswith("/analyze "):
+            parts = raw.split(maxsplit=1)
+            target = parts[1].strip() if len(parts) > 1 else ""
+            if not target:
+                console.print("\n[yellow][!][/yellow] Kullanım: [cyan]/analyze <dosya_yolu_veya_komut>[/cyan]")
+                console.print("[dim]Örnek: /analyze auth.log veya /analyze nmap_output.txt[/dim]\n")
+                return True
+
+            from pathlib import Path
+            from secai.core.analyzer import read_and_prepare_file_for_analysis, run_command_for_analysis
+
+            target_path = Path(target).expanduser()
+            if target_path.exists() and not target_path.is_dir():
+                ok, prompt_or_err = read_and_prepare_file_for_analysis(target)
+                if not ok:
+                    console.print(f"\n[bold red][-][/bold red] {prompt_or_err}\n")
+                    return True
+                console.print(f"\n[bold cyan][*][/bold cyan] Dosya analiz ediliyor: [cyan]{target_path}[/cyan]\n")
+                if self.agent_turn_fn:
+                    self.agent_turn_fn(prompt_or_err, session=session)
+                return True
+
+            ok_cmd, cmd_prompt_or_err = run_command_for_analysis(target)
+            if ok_cmd:
+                console.print(f"\n[bold cyan][*][/bold cyan] Komut çalıştırıldı ve çıktısı analiz ediliyor: [cyan]{target}[/cyan]\n")
+                if self.agent_turn_fn:
+                    self.agent_turn_fn(cmd_prompt_or_err, session=session)
+                return True
+            else:
+                console.print(f"\n[bold red][-][/bold red] Dosya bulunamadı veya komut çalıştırılamadı: [cyan]{target}[/cyan]")
+                console.print(f"[dim]{cmd_prompt_or_err}[/dim]\n")
+                return True
+
+        # 12c. Doğrudan Komut Çalıştırıp Analiz Etme (/run)
+        if low == "/run" or low.startswith("/run "):
+            parts = raw.split(maxsplit=1)
+            cmd = parts[1].strip() if len(parts) > 1 else ""
+            if not cmd:
+                console.print("\n[yellow][!][/yellow] Kullanım: [cyan]/run <sistem_komutu>[/cyan]")
+                console.print("[dim]Örnek: /run ss -tulnp veya /run netstat -tulpn[/dim]\n")
+                return True
+
+            from secai.core.analyzer import run_command_for_analysis
+
+            console.print(f"\n[bold cyan][*][/bold cyan] Komut alt süreçte çalıştırılıyor: [cyan]{cmd}[/cyan]\n")
+            ok_cmd, cmd_prompt_or_err = run_command_for_analysis(cmd)
+            if not ok_cmd:
+                console.print(f"\n[bold red][-][/bold red] {cmd_prompt_or_err}\n")
+                return True
+
+            if self.agent_turn_fn:
+                self.agent_turn_fn(cmd_prompt_or_err, session=session)
+            return True
+
+        # 12d. Smart Mode (Akıllı Model Yönlendirici)
+        if low in ("/smart", "/smartmode") or low.startswith(("/smart ", "/smartmode ")):
+            from secai.core.smart_router import is_smart_mode_enabled, set_smart_mode
+            parts = raw.split(maxsplit=1)
+            sub = parts[1].strip().lower() if len(parts) > 1 else ""
+            if sub in ("on", "ac", "aç", "aktif", "enable", "1"):
+                set_smart_mode(True)
+                console.print("\n[bold green][+][/bold green] Smart Mode (Akıllı Model Yönlendirici) [bold green]AKTİF[/bold green].\n")
+                return True
+            if sub in ("off", "kapat", "pasif", "disable", "0"):
+                set_smart_mode(False)
+                console.print("\n[bold yellow][!][/bold yellow] Smart Mode (Akıllı Model Yönlendirici) [yellow]PASİF[/yellow].\n")
+                return True
+
+            current_status = is_smart_mode_enabled()
+            status_text = "[bold green]AÇIK (AKTİF)[/bold green]" if current_status else "[bold red]KAPALI (PASİF)[/bold red]"
+            console.print(f"\n[bold cyan]⚡ Smart Mode (Akıllı Model Yönlendirici):[/bold cyan] {status_text}")
+            console.print("[dim]Karmaşık analizlerde (tersine mühendislik, exploit) bulut/büyük modellere geçiş önerir.[/dim]")
+            console.print("[dim]Açıp kapatmak için: /smart on veya /smart off[/dim]\n")
+            return True
+
         if low in ("/report", "rapor", "rapor cikar", "rapor oluştur"):
             generate_session_report(session=session)
             return True

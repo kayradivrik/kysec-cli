@@ -460,6 +460,154 @@ class SecAITestSuite(unittest.TestCase):
         handled_dialogue = dispatcher.dispatch("selam nasilsin", state)
         self.assertFalse(handled_dialogue)
 
+    def test_prompt_layer_and_options(self):
+        from secai.config import DEFAULT_NUM_CTX, DEFAULT_TEMPERATURE, get_active_llm_info
+        from secai.core.prompts import CYBER_EXPERT_SYSTEM_PROMPT, build_system_prompt
+
+        self.assertEqual(DEFAULT_TEMPERATURE, 0.2)
+        self.assertEqual(DEFAULT_NUM_CTX, 8192)
+
+        info = get_active_llm_info()
+        self.assertEqual(info["temperature"], 0.2)
+        self.assertEqual(info["num_ctx"], 8192)
+        self.assertTrue(info["smart_mode"])
+
+        self.assertIn("MITRE ATT&CK", CYBER_EXPERT_SYSTEM_PROMPT)
+        self.assertIn("Arch Linux", CYBER_EXPERT_SYSTEM_PROMPT)
+        self.assertIn("ZERO-FLUFF", CYBER_EXPERT_SYSTEM_PROMPT)
+
+        composed = build_system_prompt(
+            skill_instructions="Custom Recon Skills",
+            runtime_context="[RUNTIME CTX]",
+            memory_context="[MEMORY CTX]",
+            casebook_context="[CASEBOOK CTX]",
+        )
+        self.assertIn("Custom Recon Skills", composed)
+        self.assertIn("[RUNTIME CTX]", composed)
+        self.assertIn("[MEMORY CTX]", composed)
+        self.assertIn("[CASEBOOK CTX]", composed)
+
+    def test_analyzer_chunking_file_and_command(self):
+        from secai.core.analyzer import (
+            read_and_prepare_file_for_analysis,
+            run_command_for_analysis,
+            safe_chunk_content,
+        )
+
+        # 1. Chunking test
+        short_txt = "Test log line 1\nTest log line 2"
+        self.assertEqual(safe_chunk_content(short_txt, max_chars=100), short_txt)
+
+        huge_txt = "A" * 50000
+        chunked = safe_chunk_content(huge_txt, max_chars=1000, head_chars=200, tail_chars=300)
+        self.assertIn("DİKKAT: Dosya çok büyük", chunked)
+        self.assertTrue(chunked.startswith("A" * 200))
+        self.assertTrue(chunked.endswith("A" * 300))
+
+        # 2. File analysis test
+        with tempfile.NamedTemporaryFile("w+", encoding="utf-8", suffix=".log", delete=False) as f:
+            f.write("Oct 24 10:00:01 sshd[1234]: Failed password for root from 192.168.1.100 port 54321")
+            temp_path = f.name
+
+        try:
+            ok, prompt = read_and_prepare_file_for_analysis(temp_path)
+            self.assertTrue(ok)
+            self.assertIn("Aşağıdaki sistem/ağ/kod çıktısını bir kıdemli güvenlik analisti gözüyle incele", prompt)
+            self.assertIn("MITRE ATT&CK", prompt)
+            self.assertIn("Failed password for root", prompt)
+        finally:
+            os.remove(temp_path)
+
+        # Non-existing file
+        ok_fail, err_msg = read_and_prepare_file_for_analysis("/nonexistent/file/path_xyz.log")
+        self.assertFalse(ok_fail)
+        self.assertIn("bulunamadı", err_msg)
+
+        # 3. Subprocess command runner
+        ok_cmd, cmd_prompt = run_command_for_analysis("echo 'SECAI_TEST_CMD_OK'")
+        self.assertTrue(ok_cmd)
+        self.assertIn("Aşağıdaki sistem komutu çıktısını bir kıdemli güvenlik analisti gözüyle incele", cmd_prompt)
+        self.assertIn("SECAI_TEST_CMD_OK", cmd_prompt)
+
+    def test_smart_router_and_slash_commands(self):
+        from secai.commands.dispatcher import CommandDispatcher
+        from secai.core.smart_router import (
+            is_complex_security_task,
+            is_smart_mode_enabled,
+            recommend_or_route_model,
+            set_smart_mode,
+            switch_to_recommended_model,
+        )
+
+        # 1. Complexity heuristics
+        is_comp1, desc1 = is_complex_security_task("Bu C++ kodunda buffer overflow ve ROP chain mantigini incele")
+        self.assertTrue(is_comp1)
+        self.assertIn("Bellek Bozulması", desc1)
+
+        is_comp2, desc2 = is_complex_security_task("Ghidra ile decompile edilmis ikili dosyayi tersine muhendislikle analiz et")
+        self.assertTrue(is_comp2)
+        self.assertIn("Tersine Mühendislik", desc2)
+
+        is_simple, _ = is_complex_security_task("Linux dosya kopyalama komutu nedir?")
+        self.assertFalse(is_simple)
+
+        # 2. Smart mode toggle
+        set_smart_mode(True)
+        self.assertTrue(is_smart_mode_enabled())
+        set_smart_mode(False)
+        self.assertFalse(is_smart_mode_enabled())
+        set_smart_mode(True)
+
+        # 3. Model routing recommendation from local 7b to cloud
+        from secai.config import save_settings
+        save_settings({"provider": "ollama", "ollama_model": "qwen2.5-coder:7b", "groq_api_key": "gsk_test"})
+
+        rec = recommend_or_route_model("Decompiled binary tersine muhendislik analizi yap")
+        self.assertIsNotNone(rec)
+        self.assertTrue(rec["is_complex"])
+        self.assertTrue(rec["has_cloud_alternative"])
+        self.assertEqual(rec["recommended_provider"], "groq")
+
+        # Switch to recommended model
+        switched = switch_to_recommended_model(rec)
+        self.assertTrue(switched)
+
+        # Now that we are on Groq 120B, a complex task shouldn't ask to switch again
+        rec_already_heavy = recommend_or_route_model("Decompiled binary tersine muhendislik analizi yap")
+        self.assertIsNone(rec_already_heavy)
+
+        # 4. Dispatcher /smart, /run, /analyze integration
+        captured_prompts = []
+
+        def mock_agent_turn(prompt, session="default"):
+            captured_prompts.append(prompt)
+
+        dispatcher = CommandDispatcher(agent_turn_fn=mock_agent_turn)
+        state = {"session": "test_sess", "should_exit": False}
+
+        self.assertTrue(dispatcher.dispatch("/smart off", state))
+        self.assertFalse(is_smart_mode_enabled())
+        self.assertTrue(dispatcher.dispatch("/smart on", state))
+        self.assertTrue(is_smart_mode_enabled())
+
+        # Test /run
+        self.assertTrue(dispatcher.dispatch("/run echo 'AGENT_RUN_TEST'", state))
+        self.assertEqual(len(captured_prompts), 1)
+        self.assertIn("AGENT_RUN_TEST", captured_prompts[0])
+
+        # Test /analyze with a temporary file
+        with tempfile.NamedTemporaryFile("w+", encoding="utf-8", suffix=".log", delete=False) as f:
+            f.write("kernel: [123.456] Nmap SYN Scan detected on port 22")
+            tmp_log = f.name
+
+        try:
+            self.assertTrue(dispatcher.dispatch(f"/analyze {tmp_log}", state))
+            self.assertEqual(len(captured_prompts), 2)
+            self.assertIn("Aşağıdaki sistem/ağ/kod çıktısını bir kıdemli güvenlik analisti gözüyle incele", captured_prompts[1])
+            self.assertIn("Nmap SYN Scan", captured_prompts[1])
+        finally:
+            os.remove(tmp_log)
+
 
 if __name__ == "__main__":
     unittest.main()

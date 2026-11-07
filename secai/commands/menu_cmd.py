@@ -80,6 +80,7 @@ from secai.core.executor import (
 )
 from secai.core.intel import format_abuse_report, format_intel_report, format_vt_report
 from secai.core.llm import OllamaConnectionError, stream_chat
+from secai.core.smart_router import recommend_or_route_model, switch_to_recommended_model
 from secai.core.voice import speak_text
 from secai.core.web import format_web_results
 
@@ -102,6 +103,28 @@ def _run_agent_turn(user_input: str, session: str = "default", force_speak: bool
     Kullanıcı mesajını alır, AI yanıtını akıtır, çok adımlı ajan döngüsünü (notlar, web arama,
     Shodan intel, SecOps motorları ve bash komutları) çalıştırır ve seslendirme aktifse konuşur.
     """
+    # Smart Mode: Karmaşık analizlerde kullanıcıya daha güçlü model öner
+    rec = recommend_or_route_model(user_input)
+    if rec:
+        if rec.get("has_cloud_alternative"):
+            from rich.prompt import Confirm
+            console.print()
+            console.print(f"[bold yellow]⚡ [Smart Mode Algıladı]:[/bold yellow] [bold white]{rec['task_desc']}[/bold white]")
+            console.print(f"[dim]{rec['recommended_reason']}[/dim]")
+            try:
+                switch_choice = Confirm.ask(
+                    f"Bu işlem için [bold cyan]{rec['recommended_label']}[/bold cyan] modeline geçiş yapılsın mı?",
+                    default=True,
+                )
+                if switch_choice:
+                    switch_to_recommended_model(rec)
+                    render_top_banner()
+                    console.print(f"[bold green][+][/bold green] Aktif model [bold cyan]{rec['recommended_label']}[/bold cyan] olarak güncellendi.\n")
+            except (KeyboardInterrupt, EOFError):
+                pass
+        else:
+            console.print(f"\n[dim]{rec['message']}[/dim]\n")
+
     should_speak = force_speak or bool(load_settings().get("tts_enabled", False))
     expanded_input = expand_file_references(user_input)
     add_chat_message(session_id=session, role="user", content=expanded_input)
