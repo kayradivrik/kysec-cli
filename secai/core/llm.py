@@ -60,10 +60,15 @@ id: 1
 icerik:
 Eklenecek yeni detay...
 ```
-   - Kullanici bir notu silmek isterse ("#2 numarali notu sil"):
+   - Kullanici bir veya birkac notu silmek isterse ("#2 numarali notu sil", "not 2'yi sil"):
 ```delete-note
 id: 2
 ```
+   - Kullanici TUM notlari, defteri silmek veya temizlemek isterse ("notlari sil", "defteri temizle", "tum notlarimi sil", "butun notlari sil"):
+```delete-note
+id: all
+```
+   - ASLA "notlari silemem", "veritabanina erisemem" veya "kendiniz silin" DEME! Sen bu ```delete-note blogunu verdigin anda sistem arka planda notlari SQLite veritabanindan aninda ve kalici olarak siler!
    - Kullanici bir notu Markdown (.md) dosyasi olarak disa aktarmak isterse ("#3 numarali notu rapor/markdown olarak cikar"):
 ```export-note
 id: 3

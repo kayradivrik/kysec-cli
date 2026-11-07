@@ -85,6 +85,21 @@ class SecAITestSuite(unittest.TestCase):
         self.assertTrue(md_path.exists())
         self.assertIn("Test Guvenlik Notu", md_path.read_text(encoding="utf-8"))
 
+        # Test extract_note_actions with "id: all"
+        from secai.core.database import clear_all_notes
+        from secai.core.executor import extract_note_actions
+
+        sample_reply = "Notlari siliyorum:\n```delete-note\nid: all\n```"
+        acts = extract_note_actions(sample_reply)
+        self.assertEqual(len(acts), 1)
+        self.assertEqual(acts[0]["action"], "delete-note")
+        self.assertEqual(acts[0]["id"], "all")
+
+        # Test clear_all_notes
+        deleted = clear_all_notes()
+        self.assertGreaterEqual(deleted, 1)
+        self.assertEqual(len(list_notes()), 0)
+
     def test_chat_history_memory(self):
         clear_chat_history("test_session")
         add_chat_message("test_session", "user", "Merhaba, iptables kurali nedir?")

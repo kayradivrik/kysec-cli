@@ -38,6 +38,7 @@ from secai.core.database import (
     add_note,
     auto_title_session,
     autotitle_unnamed_sessions,
+    clear_all_notes,
     clear_chat_history,
     create_session,
     delete_memory,
@@ -56,6 +57,7 @@ from secai.core.database import (
 )
 from secai.core.executor import (
     extract_memory_actions,
+    extract_note_actions,
     extract_saved_notes,
     strip_internal_blocks,
 )
@@ -757,6 +759,26 @@ def make_handler(token: str):
                         pass
                 elif m_act["action"] == "forget":
                     delete_memory(m_act["key"])
+
+            # Doğal dille not silme / güncelleme
+            for act in extract_note_actions(reply):
+                target_id = act.get("id", "").strip().lower()
+                if act["action"] == "delete-note":
+                    if target_id in ("all", "tum", "tüm", "hepsi", "*"):
+                        del_cnt = clear_all_notes()
+                        try:
+                            self.wfile.write(f"\n\n_🗑️ Defterdeki tüm notlar silindi ({del_cnt} adet)_\n".encode("utf-8"))
+                            self.wfile.flush()
+                        except (BrokenPipeError, ConnectionResetError):
+                            pass
+                    elif target_id.isdigit():
+                        nid = int(target_id)
+                        if delete_note(nid):
+                            try:
+                                self.wfile.write(f"\n\n_🗑️ Not #{nid} silindi_\n".encode("utf-8"))
+                                self.wfile.flush()
+                            except (BrokenPipeError, ConnectionResetError):
+                                pass
 
             saved = []
             for n in extract_saved_notes(reply):

@@ -223,3 +223,4 @@ def show_shortcuts() -> None:
     console.print()
     console.print(table)
     console.print()
+

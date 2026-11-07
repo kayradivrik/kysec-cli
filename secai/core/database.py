@@ -276,6 +276,14 @@ def delete_note(note_id: int) -> bool:
         return cursor.rowcount > 0
 
 
+def clear_all_notes() -> int:
+    """Vaka Defterindeki tüm notları siler ve silinen kayıt sayısını döner."""
+    init_db()
+    with get_connection() as conn:
+        cursor = conn.execute("DELETE FROM notes")
+        return cursor.rowcount
+
+
 def export_note_markdown(note_id: int, output_path: Optional[Path] = None) -> Path:
     note = get_note(note_id)
     if not note:

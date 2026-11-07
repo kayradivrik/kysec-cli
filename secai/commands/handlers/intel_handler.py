@@ -109,3 +109,4 @@ def interactive_abuse(inline_ip: str = "") -> None:
             border_style=color,
         )
     )
+

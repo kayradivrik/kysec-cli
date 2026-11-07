@@ -378,3 +378,4 @@ def manage_skills_interactive(inline_arg: str = "") -> None:
         set_active_skill(picked["name"])
         render_top_banner()
         console.print(f"[bold green][+][/bold green] Aktif skill: [cyan]{picked['name']}[/cyan]\n")
+

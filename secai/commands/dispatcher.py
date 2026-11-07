@@ -272,7 +272,17 @@ class CommandDispatcher:
             return True
 
         # 13. Vaka Defteri & Yedekleme
-        if low in ("/notes", "/list", "/defter"):
+        if low in ("/notes", "/list", "/defter") or low.startswith(("/notes ", "/list ", "/defter ")):
+            parts = raw.split(maxsplit=1)
+            sub = parts[1].strip().lower() if len(parts) > 1 else ""
+            if sub in ("clear", "sil", "temizle", "all"):
+                from rich.prompt import Confirm
+                from secai.core.database import clear_all_notes
+
+                if Confirm.ask("Vaka Defterindeki TÜM notlar silinsin mi?", default=False):
+                    cnt = clear_all_notes()
+                    console.print(f"\n[bold green][+][/bold green] Vaka Defterindeki tüm notlar silindi ({cnt} adet).\n")
+                return True
             interactive_list_and_read()
             return True
 
@@ -316,3 +326,4 @@ class CommandDispatcher:
 
         # Eşleşen /slash komutu yok; normal mesaj olarak ajana ilet
         return False
+

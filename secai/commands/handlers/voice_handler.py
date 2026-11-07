@@ -103,3 +103,4 @@ def interactive_voice_loop(session: str = "default", agent_turn_fn: Optional[Cal
         if cont in ("q", "quit", "exit", "cikis", "çıkış"):
             console.print("[dim][*] Sesli diyalog modundan cikildi.[/dim]\n")
             break
+

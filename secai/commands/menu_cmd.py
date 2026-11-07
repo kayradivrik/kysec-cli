@@ -56,6 +56,7 @@ from secai.core.database import (
     add_chat_message,
     add_note,
     auto_title_session,
+    clear_all_notes,
     delete_memory,
     delete_note,
     export_note_markdown,
@@ -140,14 +141,21 @@ def _run_agent_turn(user_input: str, session: str = "default", force_speak: bool
 
         # 2. Doğal dille not güncelleme / silme / markdown dışa aktarma
         for act in extract_note_actions(last_assistant_reply):
-            nid = int(act["id"])
-            if act["action"] == "update-note" and act["content"]:
+            target_id = act.get("id", "").strip().lower()
+            if act["action"] == "delete-note":
+                if target_id in ("all", "tum", "tüm", "hepsi", "*"):
+                    del_cnt = clear_all_notes()
+                    console.print(f"[bold green][+][/bold green] Vaka Defterindeki tüm notlar silindi ({del_cnt} adet).\n")
+                elif target_id.isdigit():
+                    nid = int(target_id)
+                    if delete_note(nid):
+                        console.print(f"[bold green][+][/bold green] Not #{nid} silindi.\n")
+            elif act["action"] == "update-note" and target_id.isdigit() and act["content"]:
+                nid = int(target_id)
                 if update_note(note_id=nid, content=act["content"], append=True):
                     console.print(f"[bold green][+][/bold green] Not #{nid} güncellendi.\n")
-            elif act["action"] == "delete-note":
-                if delete_note(nid):
-                    console.print(f"[bold green][+][/bold green] Not #{nid} silindi.\n")
-            elif act["action"] == "export-note":
+            elif act["action"] == "export-note" and target_id.isdigit():
+                nid = int(target_id)
                 try:
                     md_path = export_note_markdown(nid)
                     console.print(f"[bold green][+][/bold green] Markdown rapor hazır: {md_path}\n")

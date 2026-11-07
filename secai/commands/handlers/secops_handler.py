@@ -248,3 +248,4 @@ def generate_session_report(session: str = "default") -> None:
                 f"[bold green][+][/bold green] Rapor Vaka Defterine kaydedildi (#{nid}) ve Markdown olarak disa aktarildi:\n"
                 f"    [cyan]{md_path}[/cyan] (PDF Hatasi: {e})\n"
             )
+

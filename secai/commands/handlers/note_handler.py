@@ -106,3 +106,4 @@ def interactive_list_and_read() -> None:
             path = export_note_markdown(note_id)
             console.print(f"[bold green][+][/bold green] {path}")
     console.print()
+

@@ -172,11 +172,31 @@ def extract_note_actions(markdown_text: str) -> list[dict[str, str]]:
                 else:
                     in_content = True
                     content_lines.append(line)
-            if note_id.isdigit():
+            raw_id = note_id.lower().strip()
+            if raw_id in ("all", "tum", "tüm", "hepsi", "*"):
                 actions.append(
                     {
                         "action": action_type,
-                        "id": note_id,
+                        "id": "all",
+                        "content": "\n".join(content_lines).strip(),
+                    }
+                )
+            elif "," in raw_id:
+                for piece in raw_id.split(","):
+                    p = piece.strip().lstrip("#")
+                    if p.isdigit():
+                        actions.append(
+                            {
+                                "action": action_type,
+                                "id": p,
+                                "content": "\n".join(content_lines).strip(),
+                            }
+                        )
+            elif raw_id.isdigit():
+                actions.append(
+                    {
+                        "action": action_type,
+                        "id": raw_id,
                         "content": "\n".join(content_lines).strip(),
                     }
                 )
