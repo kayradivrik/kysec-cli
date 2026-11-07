@@ -16,6 +16,8 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 from reportlab.platypus import (
     HRFlowable,
@@ -29,6 +31,34 @@ from reportlab.platypus import (
 
 from secai.config import get_export_dir
 from secai.core.database import get_chat_history, get_note, get_user_profile
+
+TR_MAP = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
+
+
+def setup_pdf_fonts() -> tuple[str, str, str]:
+    """Türkçe ve UTF-8 karakterleri (ç, ğ, ı, ö, ş, ü, İ, Ğ, Ş) tam destekleyen Unicode fontları kaydeder."""
+    font_candidates = [
+        ("/usr/share/fonts/TTF/DejaVuSans.ttf", "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf", "/usr/share/fonts/TTF/DejaVuSansMono.ttf", "DejaVuSans"),
+        ("/usr/share/fonts/liberation/LiberationSans-Regular.ttf", "/usr/share/fonts/liberation/LiberationSans-Bold.ttf", "/usr/share/fonts/liberation/LiberationMono-Regular.ttf", "LiberationSans"),
+        ("/usr/share/fonts/noto/NotoSans-Regular.ttf", "/usr/share/fonts/noto/NotoSans-Bold.ttf", "/usr/share/fonts/noto/NotoSansMono-Regular.ttf", "NotoSans"),
+    ]
+    for reg_path, bold_path, mono_path, name in font_candidates:
+        if Path(reg_path).exists() and Path(bold_path).exists():
+            try:
+                pdfmetrics.registerFont(TTFont(name, reg_path))
+                pdfmetrics.registerFont(TTFont(f"{name}-Bold", bold_path))
+                mono_name = f"{name}-Mono"
+                if Path(mono_path).exists():
+                    pdfmetrics.registerFont(TTFont(mono_name, mono_path))
+                else:
+                    mono_name = name
+                return name, f"{name}-Bold", mono_name
+            except Exception:
+                continue
+    return "Helvetica", "Helvetica-Bold", "Courier"
+
+
+PDF_FONT, PDF_FONT_BOLD, PDF_FONT_MONO = setup_pdf_fonts()
 
 
 class NumberedCanvas(canvas.Canvas):
@@ -55,10 +85,10 @@ class NumberedCanvas(canvas.Canvas):
         page_w, page_h = A4
 
         # Üst Bilgi (Header)
-        self.setFont("Helvetica-Bold", 8)
+        self.setFont(PDF_FONT_BOLD, 8)
         self.setFillColor(colors.HexColor("#0284c7"))
         self.drawString(36, page_h - 24, "SecAI CYBER DEFENSE INTELLIGENCE")
-        self.setFont("Helvetica", 8)
+        self.setFont(PDF_FONT, 8)
         self.setFillColor(colors.HexColor("#64748b"))
         self.drawRightString(page_w - 36, page_h - 24, "TLP:AMBER | GİZLİ - KURUMSAL DEĞERLENDİRME")
         self.setStrokeColor(colors.HexColor("#cbd5e1"))
@@ -67,7 +97,7 @@ class NumberedCanvas(canvas.Canvas):
 
         # Alt Bilgi (Footer)
         self.line(36, 32, page_w - 36, 32)
-        self.setFont("Helvetica", 8)
+        self.setFont(PDF_FONT, 8)
         self.setFillColor(colors.HexColor("#64748b"))
         self.drawString(36, 20, "Hazırlayan: SecAI Autonomous Cyber Engine & Lead Security Analyst")
         page_str = f"Sayfa {self._pageNumber} / {total_pages}"
@@ -77,7 +107,7 @@ class NumberedCanvas(canvas.Canvas):
 
 def _clean_md_inline(text: str) -> str:
     s = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    s = re.sub(r"`([^`]+)`", r"<font name='Courier'>\1</font>", s)
+    s = re.sub(r"`([^`]+)`", rf"<font name='{PDF_FONT_MONO}'>\1</font>", s)
     s = re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", s)
     s = re.sub(r"\*([^*]+)\*", r"<i>\1</i>", s)
     return s
@@ -107,7 +137,7 @@ def _parse_markdown_to_flowables(text: str, styles: dict) -> list:
                 i += 1
             i += 1  # Kapanış ``` geç
             code_text = "\n".join(code_lines).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            code_html = f"<font name='Courier' size='8' color='#e2e8f0'>{code_text.replace(chr(10), '<br/>')}</font>"
+            code_html = f"<font name='{PDF_FONT_MONO}' size='8' color='#e2e8f0'>{code_text.replace(chr(10), '<br/>')}</font>"
             t = Table(
                 [[Paragraph(code_html, styles["CodeBlock"])]],
                 colWidths=[A4[0] - 72],
@@ -215,7 +245,7 @@ def generate_custom_pdf_report(
     """Kurumsal standartlarda tam biçimlendirilmiş profesyonel bir siber güvenlik PDF raporu üretir."""
     user_profile = get_user_profile() or "SecOps Security Analyst"
 
-    slug = re.sub(r"[^a-zA-Z0-9_-]+", "_", title.lower()).strip("_") or "report"
+    slug = re.sub(r"[^a-zA-Z0-9_-]+", "_", title.translate(TR_MAP).lower()).strip("_") or "report"
     ref_id = f"#SEC-2026-N{note_id:04d}" if note_id else f"#SEC-2026-{datetime.now().strftime('%m%d%H%M')}"
 
     if output_path:
@@ -240,7 +270,7 @@ def generate_custom_pdf_report(
         "Title": ParagraphStyle(
             "SecTitle",
             parent=base_styles["Title"],
-            fontName="Helvetica-Bold",
+            fontName=PDF_FONT_BOLD,
             fontSize=20,
             leading=24,
             textColor=colors.HexColor("#0f172a"),
@@ -250,7 +280,7 @@ def generate_custom_pdf_report(
         "Subtitle": ParagraphStyle(
             "SecSubTitle",
             parent=base_styles["Normal"],
-            fontName="Helvetica-Bold",
+            fontName=PDF_FONT_BOLD,
             fontSize=10,
             leading=14,
             textColor=colors.HexColor("#0284c7"),
@@ -259,7 +289,7 @@ def generate_custom_pdf_report(
         "Heading1": ParagraphStyle(
             "SecH1",
             parent=base_styles["Heading1"],
-            fontName="Helvetica-Bold",
+            fontName=PDF_FONT_BOLD,
             fontSize=13,
             leading=16,
             textColor=colors.HexColor("#0f172a"),
@@ -269,7 +299,7 @@ def generate_custom_pdf_report(
         "Heading2": ParagraphStyle(
             "SecH2",
             parent=base_styles["Heading2"],
-            fontName="Helvetica-Bold",
+            fontName=PDF_FONT_BOLD,
             fontSize=11,
             leading=14,
             textColor=colors.HexColor("#1e293b"),
@@ -279,7 +309,7 @@ def generate_custom_pdf_report(
         "Heading3": ParagraphStyle(
             "SecH3",
             parent=base_styles["Heading3"],
-            fontName="Helvetica-Bold",
+            fontName=PDF_FONT_BOLD,
             fontSize=10,
             leading=13,
             textColor=colors.HexColor("#334155"),
@@ -289,7 +319,7 @@ def generate_custom_pdf_report(
         "Body": ParagraphStyle(
             "SecBody",
             parent=base_styles["Normal"],
-            fontName="Helvetica",
+            fontName=PDF_FONT,
             fontSize=9.5,
             leading=14,
             textColor=colors.HexColor("#1e293b"),
@@ -298,7 +328,7 @@ def generate_custom_pdf_report(
         "BulletItem": ParagraphStyle(
             "SecBullet",
             parent=base_styles["Normal"],
-            fontName="Helvetica",
+            fontName=PDF_FONT,
             fontSize=9,
             leading=13,
             textColor=colors.HexColor("#1e293b"),
@@ -308,7 +338,7 @@ def generate_custom_pdf_report(
         "CodeBlock": ParagraphStyle(
             "SecCode",
             parent=base_styles["Normal"],
-            fontName="Courier",
+            fontName=PDF_FONT_MONO,
             fontSize=8,
             leading=10,
             textColor=colors.HexColor("#e2e8f0"),
@@ -316,7 +346,7 @@ def generate_custom_pdf_report(
         "MetaCell": ParagraphStyle(
             "SecMeta",
             parent=base_styles["Normal"],
-            fontName="Helvetica",
+            fontName=PDF_FONT,
             fontSize=8.5,
             leading=11,
             textColor=colors.HexColor("#334155"),
