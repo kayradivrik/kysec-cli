@@ -272,10 +272,13 @@ class CommandDispatcher:
             return True
 
         # 13. Vaka Defteri & Yedekleme
-        if low in ("/notes", "/list", "/defter") or low.startswith(("/notes ", "/list ", "/defter ")):
+        if (
+            low in ("/notes", "/list", "/defter", "notları sil", "notlari sil", "tüm notları sil", "tum notlari sil", "defteri temizle")
+            or low.startswith(("/notes ", "/list ", "/defter "))
+        ):
             parts = raw.split(maxsplit=1)
             sub = parts[1].strip().lower() if len(parts) > 1 else ""
-            if sub in ("clear", "sil", "temizle", "all"):
+            if sub in ("clear", "sil", "temizle", "all") or low in ("notları sil", "notlari sil", "tüm notları sil", "tum notlari sil", "defteri temizle"):
                 from rich.prompt import Confirm
                 from secai.core.database import clear_all_notes
 

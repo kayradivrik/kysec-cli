@@ -387,6 +387,43 @@ class SecAITestSuite(unittest.TestCase):
             self.assertEqual(res["abuse_score"], 85)
             self.assertEqual(res["risk"], "KRITIK")
 
+        # Test extraction of VT and Abuse blocks
+        from secai.core.executor import extract_abuse_lookups, extract_vt_lookups
+        from secai.core.intel import format_abuse_report, format_vt_report
+
+        ai_msg = (
+            "Hedefi incelemek icin:\n"
+            "```vt-lookup\ntarget: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n```\n"
+            "```abuse-lookup\nip: 185.220.101.5\n```"
+        )
+        self.assertEqual(extract_vt_lookups(ai_msg), ["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"])
+        self.assertEqual(extract_abuse_lookups(ai_msg), ["185.220.101.5"])
+
+        # Reports when no key is set return informational messages
+        self.assertIn("VirusTotal", format_vt_report("1.1.1.1"))
+        self.assertIn("AbuseIPDB", format_abuse_report("1.1.1.1"))
+
+    def test_workspace_runtime_and_semantic_rag(self):
+        from secai.core.database import add_note, get_casebook_context
+        from secai.core.llm import get_runtime_context
+
+        # Runtime workspace awareness test
+        ctx = get_runtime_context()
+        self.assertIn("WORKSPACE", ctx)
+        self.assertIn("RTX 4050", ctx)
+        self.assertIn("CWD", ctx)
+
+        # Semantic note RAG test
+        add_note(
+            title="WiFi Parolaları ve Ağlar",
+            content="Ev WiFi şifresi: SuperSecretKey2026, SSID: HomeNet_5G",
+            category="ctf",
+            tags="wifi,wpa",
+        )
+        rag_context = get_casebook_context("Bana wifi şifresini söyler misin?")
+        self.assertIn("WiFi Parolaları", rag_context)
+        self.assertIn("SuperSecretKey2026", rag_context)
+
     def test_command_dispatcher_and_web_router(self):
         from secai.commands.dispatcher import CommandDispatcher
         from secai.web.router import Router

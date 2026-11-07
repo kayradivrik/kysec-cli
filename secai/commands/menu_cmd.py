@@ -66,17 +66,19 @@ from secai.core.database import (
 )
 from secai.core.executor import (
     expand_file_references,
+    extract_abuse_lookups,
     extract_intel_queries,
     extract_memory_actions,
     extract_note_actions,
     extract_saved_notes,
     extract_secops_actions,
     extract_shell_commands,
+    extract_vt_lookups,
     extract_web_searches,
     prompt_and_execute,
     strip_internal_blocks,
 )
-from secai.core.intel import format_intel_report
+from secai.core.intel import format_abuse_report, format_intel_report, format_vt_report
 from secai.core.llm import OllamaConnectionError, stream_chat
 from secai.core.voice import speak_text
 from secai.core.web import format_web_results
@@ -204,6 +206,48 @@ def _run_agent_turn(user_input: str, session: str = "default", force_speak: bool
                 content=(
                     f"{intel_report}\n\n"
                     "Yukarıdaki gerçek Shodan InternetDB ve GeoIP istihbarat sonuçlarını kullanarak kullanıcıya detaylı bir tehdit analizi sun (tekrar intel-lookup bloğu yazma)."
+                ),
+            )
+            try:
+                updated_messages = get_chat_history(session_id=session, limit=40)
+                last_assistant_reply = _stream_reply(updated_messages)
+                continue
+            except (KeyboardInterrupt, EOFError, OllamaConnectionError):
+                break
+
+        # 5b. Otomatik VirusTotal Tehdit İstihbaratı Sorgusu
+        vt_targets = extract_vt_lookups(last_assistant_reply)
+        if vt_targets:
+            vt_target = vt_targets[0]
+            console.print(f"[bold cyan][*][/bold cyan] VirusTotal tehdit istihbaratı sorgulanıyor: [white]{vt_target}[/white]")
+            vt_report = format_vt_report(vt_target)
+            add_chat_message(
+                session_id=session,
+                role="user",
+                content=(
+                    f"{vt_report}\n\n"
+                    "Yukarıdaki VirusTotal istihbarat sonucunu değerlendir ve kullanıcıya detaylı risk analizi sun (tekrar vt-lookup bloğu yazma)."
+                ),
+            )
+            try:
+                updated_messages = get_chat_history(session_id=session, limit=40)
+                last_assistant_reply = _stream_reply(updated_messages)
+                continue
+            except (KeyboardInterrupt, EOFError, OllamaConnectionError):
+                break
+
+        # 5c. Otomatik AbuseIPDB Kötüye Kullanım Skoru Sorgusu
+        abuse_ips = extract_abuse_lookups(last_assistant_reply)
+        if abuse_ips:
+            abuse_ip = abuse_ips[0]
+            console.print(f"[bold cyan][*][/bold cyan] AbuseIPDB itibar skoru sorgulanıyor: [white]{abuse_ip}[/white]")
+            abuse_report = format_abuse_report(abuse_ip)
+            add_chat_message(
+                session_id=session,
+                role="user",
+                content=(
+                    f"{abuse_report}\n\n"
+                    "Yukarıdaki AbuseIPDB raporunu değerlendir ve IP'nin saldırı/tarama geçmişini kullanıcıya açıkla (tekrar abuse-lookup bloğu yazma)."
                 ),
             )
             try:

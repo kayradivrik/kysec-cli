@@ -344,6 +344,26 @@ def get_casebook_context(user_query: str = "", limit: int = 15) -> str:
         if detail:
             lines.append(f"\n[Not #{mid} Tam Icerigi ('{detail['title']}')]:\n{detail['content'][:1500]}")
 
+    # Semantik / Anahtar Kelime RAG Eşleştiricisi: Kullanıcının sorusundaki kavramlarla eşleşen en alakalı notları çek
+    query_terms = [
+        t for t in re.findall(r"\b\w{3,}\b", user_query.lower())
+        if t not in ("nedir", "nasil", "var", "mi", "ile", "icin", "not", "notlar", "bana", "sunu", "bunu", "hakkinda")
+    ]
+    if query_terms and notes:
+        scored_notes = []
+        for n in list_notes():
+            if n["id"] in mentioned_ids:
+                continue
+            haystack = f"{n['title']} {n['tags']} {n['content']}".lower()
+            score = sum(haystack.count(term) for term in query_terms)
+            if score > 0:
+                scored_notes.append((score, n))
+        scored_notes.sort(key=lambda x: x[0], reverse=True)
+        for _, rel_n in scored_notes[:3]:
+            lines.append(
+                f"\n[Soruyla En Alakalı Not #{rel_n['id']} ('{rel_n['title']}')]:\n{rel_n['content'][:1200]}"
+            )
+
     return "\n".join(lines)
 
 

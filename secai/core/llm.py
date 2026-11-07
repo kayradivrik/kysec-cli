@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from typing import Generator, Optional
 import requests
 
@@ -78,10 +79,18 @@ id: 3
 ```web-search
 sorgu: aranacak anahtar kelimeler
 ```
-8. OTOMATIK TEHDIT ISTIHBARATI (SHODAN INTERNETDB) & SECOPS MOTORLARI:
-   - Kullanici bir veya birden fazla dis (public) IPv4 adresini sorgulamak, arastirmak veya tehdit istihbarati almak isterse ("bu IP'ye bak: 185.220.101.45", "su IP'leri Shodan'da sorgula"), yanitinda su blogu ver:
+8. OTOMATIK TEHDIT ISTIHBARATI (SHODAN, VIRUSTOTAL, ABUSEIPDB) & SECOPS MOTORLARI:
+   - Kullanici bir veya birden fazla dis (public) IPv4 adresini Shodan InternetDB uzerinde sorgulamak isterse:
 ```intel-lookup
 185.220.101.45
+```
+   - Kullanici bir IP, domain veya dosya hash'ini (MD5/SHA256) VirusTotal uzerinde kontrol etmek isterse ("VT'de sorgula", "VirusTotal skoru ne", "bu hash zararli mi"):
+```vt-lookup
+target: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+```
+   - Kullanici bir IP'nin kotuye kullanim (abuse/saldiri/tarama) skorunu AbuseIPDB'de sorgulamak isterse ("AbuseIPDB skoru", "bu IP saldirgan mi", "sikayet gecmisi"):
+```abuse-lookup
+ip: 185.220.101.45
 ```
    - Kullanici sistemin temiz referans kaydini (baseline) almak isterse ("baseline al", "sistemin su anki goruntusunu kaydet"):
 ```secops-action
@@ -136,10 +145,12 @@ def get_runtime_context() -> str:
 
     distro = platform.system()
     try:
-        for line in open("/etc/os-release", encoding="utf-8"):
-            if line.startswith("PRETTY_NAME="):
-                distro = line.split("=", 1)[1].strip().strip('"')
-                break
+        os_rel = Path("/etc/os-release")
+        if os_rel.exists():
+            for line in os_rel.read_text(encoding="utf-8").splitlines():
+                if line.startswith("PRETTY_NAME="):
+                    distro = line.split("=", 1)[1].strip().strip('"')
+                    break
     except Exception:
         pass
 
@@ -148,10 +159,34 @@ def get_runtime_context() -> str:
     except Exception:
         user_host = "bilinmiyor"
 
+    # Aktif calisma dizini ve projedeki ust dosyalar (Workspace Tree Awareness)
+    cwd = Path.cwd()
+    top_entries = []
+    try:
+        top_entries = [p.name + ("/" if p.is_dir() else "") for p in sorted(cwd.iterdir()) if not p.name.startswith(".")][:25]
+    except Exception:
+        pass
+    entries_str = ", ".join(top_entries) if top_entries else "bos"
+
+    # Git branch kontrolu
+    git_branch = ""
+    git_head = cwd / ".git" / "HEAD"
+    if git_head.exists():
+        try:
+            head_txt = git_head.read_text(encoding="utf-8").strip()
+            if head_txt.startswith("ref: refs/heads/"):
+                git_branch = head_txt.replace("ref: refs/heads/", "")
+        except Exception:
+            pass
+    git_str = f" [git: {git_branch}]" if git_branch else ""
+
     return (
-        "[GERCEK CALISMA ZAMANI BILGISI]:\n"
+        "[GERCEK CALISMA ZAMANI & CALISMA ALANI (WORKSPACE) BILGISI]:\n"
         f"- Bugunun tarihi ve saati: {tarih}\n"
         f"- Sistem: {distro} (cekirdek {platform.release()}), kullanici/host: {user_host}\n"
+        f"- Donanim / GPU: NVIDIA GeForce RTX 4050 (6GB VRAM) & Intel Iris Xe\n"
+        f"- Bulunulan Calisma Dizini (CWD): {cwd}{git_str}\n"
+        f"- Bu Dizindeki Ust Dosyalar / Proje Agaci: {entries_str}\n"
         "- Rapora veya yanita tarih ya da sistem adi yazacaksan SADECE bu bilgileri kullan; "
         "asla tahmini/uydurma bir tarih veya 'Belirtilmemis' yazma."
     )

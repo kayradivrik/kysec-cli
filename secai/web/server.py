@@ -56,13 +56,21 @@ from secai.core.database import (
     update_session_title,
 )
 from secai.core.executor import (
+    extract_abuse_lookups,
     extract_memory_actions,
     extract_note_actions,
     extract_saved_notes,
+    extract_vt_lookups,
     strip_internal_blocks,
 )
 from secai.core.image import generate_image_data, list_generated_images
-from secai.core.intel import enrich_abuseipdb, enrich_virustotal, format_intel_report
+from secai.core.intel import (
+    enrich_abuseipdb,
+    enrich_virustotal,
+    format_abuse_report,
+    format_intel_report,
+    format_vt_report,
+)
 from secai.core.llm import OllamaConnectionError, stream_chat
 from secai.core.pdf_report import generate_note_pdf_report, generate_session_pdf_report
 from secai.core.skills import get_active_skill, list_all_skills, set_active_skill
@@ -787,6 +795,22 @@ def make_handler(token: str):
             if saved:
                 try:
                     self.wfile.write(f"\n\n_Deftere kaydedildi: {', '.join(saved)}_".encode("utf-8"))
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
+            for vt_tgt in extract_vt_lookups(reply):
+                vt_rep = format_vt_report(vt_tgt)
+                try:
+                    self.wfile.write(f"\n\n{vt_rep}\n".encode("utf-8"))
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
+            for ab_ip in extract_abuse_lookups(reply):
+                ab_rep = format_abuse_report(ab_ip)
+                try:
+                    self.wfile.write(f"\n\n{ab_rep}\n".encode("utf-8"))
                     self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError):
                     pass

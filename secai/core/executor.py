@@ -120,6 +120,30 @@ def extract_intel_queries(markdown_text: str) -> list[str]:
     return targets
 
 
+def extract_vt_lookups(markdown_text: str) -> list[str]:
+    """Model yanitindaki ```vt-lookup veya ```virustotal bloklarindan hedef hash/IP/domain ayiklar."""
+    pattern = re.compile(r"```(?:vt-lookup|virustotal|vt)\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
+    targets: list[str] = []
+    for block in pattern.findall(markdown_text):
+        for line in block.strip().splitlines():
+            clean = line.strip().lstrip("target:").strip()
+            if clean:
+                targets.append(clean)
+    return targets
+
+
+def extract_abuse_lookups(markdown_text: str) -> list[str]:
+    """Model yanitindaki ```abuse-lookup veya ```abuseipdb bloklarindan IP adreslerini ayiklar."""
+    pattern = re.compile(r"```(?:abuse-lookup|abuseipdb|abuse)\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
+    targets: list[str] = []
+    for block in pattern.findall(markdown_text):
+        for line in block.strip().splitlines():
+            clean = line.strip().lstrip("ip:").strip()
+            if clean:
+                targets.append(clean)
+    return targets
+
+
 def extract_secops_actions(markdown_text: str) -> list[str]:
     """Model yanitindaki ```secops-action bloklarindan (baseline, diff, score) komutlarini ayiklar."""
     pattern = re.compile(r"```secops-action\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)

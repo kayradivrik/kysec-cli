@@ -254,3 +254,58 @@ def format_intel_report(text_or_ip: str, max_ips: int = 8) -> str:
         lines.append(f"- **MD5 Hash ({len(md5s)}):** {', '.join(f'`{h}`' for h in md5s[:5])}")
 
     return "\n".join(lines)
+
+
+def format_vt_report(target: str) -> str:
+    """Tek bir IP, domain veya dosya hash'i icin VirusTotal v3 ozet raporu uretir."""
+    clean = target.strip()
+    if not clean:
+        return "[VirusTotal]: Sorgulanacak geçerli bir hedef (IP, domain veya hash) verilmedi."
+
+    res = enrich_virustotal(clean)
+    if not res:
+        key = load_settings().get("virustotal_api_key", "").strip()
+        if not key:
+            return (
+                f"[VirusTotal]: `{clean}` sorgulanamadı. VirusTotal API anahtarı ayarlanmamış.\n"
+                "Kullanıcı `/settings` veya `config.json` ile `virustotal_api_key` tanımlayabilir."
+            )
+        return f"[VirusTotal]: `{clean}` hedefi VirusTotal veritabanında bulunamadı veya API hatası oluştu."
+
+    status_icon = "🚨 ZARARLI" if res["is_dangerous"] else "✅ TEMİZ / GÜVENLİ"
+    return (
+        f"### VirusTotal İstihbarat Raporu: `{res['target']}`\n"
+        f"- **Durum:** {status_icon}\n"
+        f"- **Tespit Skoru:** `{res['score_label']}` (Malicious: {res['malicious']}, Suspicious: {res['suspicious']})\n"
+        f"- **İtibar (Reputation):** {res['reputation']}\n"
+        f"- **Hedef Türü:** {res['type']}"
+    )
+
+
+def format_abuse_report(ip: str) -> str:
+    """Tek bir IP adresi icin AbuseIPDB v2 ozet raporu uretir."""
+    clean = ip.strip()
+    if not clean:
+        return "[AbuseIPDB]: Sorgulanacak geçerli bir IP adresi verilmedi."
+
+    res = enrich_abuseipdb(clean)
+    if not res:
+        key = load_settings().get("abuseipdb_api_key", "").strip()
+        if not key:
+            return (
+                f"[AbuseIPDB]: `{clean}` sorgulanamadı. AbuseIPDB API anahtarı ayarlanmamış.\n"
+                "Kullanıcı `/settings` veya `config.json` ile `abuseipdb_api_key` tanımlayabilir."
+            )
+        return f"[AbuseIPDB]: `{clean}` AbuseIPDB üzerinde sorgulanamadı veya özel/geçersiz bir IP adresi."
+
+    status_icon = "🚨 YÜKSEK RİSK" if res["risk"] in ("KRITIK", "YUKSEK") else "ℹ️ NORMAL"
+    return (
+        f"### AbuseIPDB Raporu: `{res['ip']}`\n"
+        f"- **Risk Seviyesi:** {status_icon} (**{res['risk']}**)\n"
+        f"- **Kötüye Kullanım Güven Skoru:** %{res['abuse_score']}\n"
+        f"- **Toplam Şikayet (Reports):** {res['total_reports']}\n"
+        f"- **Ülke / ISP:** {res['country']} / {res['isp']}\n"
+        f"- **Domain:** {res['domain']}\n"
+        f"- **Son Raporlanma:** {res['last_reported_at']}"
+    )
+
