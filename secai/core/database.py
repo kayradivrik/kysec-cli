@@ -315,22 +315,49 @@ def get_casebook_context(user_query: str = "", limit: int = 15) -> str:
     kayitli notlarin ve vakalarin ozetini (veya soruda gecen #ID detayini) uretir.
     """
     init_db()
-    notes = list_notes()[:limit]
-    cases = list_cases()[:limit]
+    all_notes = list_notes()
+    all_cases = list_cases()
 
-    if not notes and not cases:
-        return "Kullanicinin Vaka & Proje Defterinde henuz kayit yok."
+    if not all_notes and not all_cases:
+        return ""
+
+    low_q = user_query.lower()
+    is_asking_notes = any(
+        kw in low_q
+        for kw in ("not", "defter", "vaka", "kayıt", "kayit", "rapor", "hafıza", "hafiza", "proje", "listele", "geçmiş", "gecmis")
+    ) or bool(re.search(r"(?:#|not\s+|id\s+)(\d+)", low_q))
+
+    # Semantik / Anahtar Kelime RAG Eşleştiricisi
+    query_terms = [
+        t for t in re.findall(r"\b\w{3,}\b", low_q)
+        if t not in ("nedir", "nasil", "nasıl", "var", "mi", "mı", "mu", "mü", "ile", "icin", "için", "not", "notlar", "bana", "sunu", "bunu", "hakkinda", "hakkında")
+    ]
+    scored_notes = []
+    if query_terms and all_notes:
+        for n in all_notes:
+            haystack = f"{n['title']} {n['tags']} {n['content']}".lower()
+            score = sum(haystack.count(term) for term in query_terms)
+            if score > 0:
+                scored_notes.append((score, n))
+        scored_notes.sort(key=lambda x: x[0], reverse=True)
+
+    # Eğer kullanıcı defteri sormuyorsa ve soruyla alakalı hiçbir not bulunamadıysa bağlamı kirletme
+    if not is_asking_notes and not scored_notes:
+        return ""
 
     lines: list[str] = ["[KULLANICININ VAKA & PROJE DEFTERI (SQLite)]:"]
-    if notes:
+    notes = all_notes[:limit]
+    cases = all_cases[:limit]
+
+    if is_asking_notes and notes:
         lines.append("Kayitli Notlar / Raporlar:")
         for n in notes:
-            short_body = n["content"].replace("\n", " ")[:400]
+            short_body = n["content"].replace("\n", " ")[:250]
             lines.append(
-                f"  - Not #{n['id']} ({n['created_at']}): '{n['title']}' [kategori: {n['category']}, etiket: {n['tags'] or '-'}] -> Icerik Ozeti: {short_body}"
+                f"  - Not #{n['id']} ({n['created_at']}): '{n['title']}' [kategori: {n['category']}, etiket: {n['tags'] or '-'}] -> {short_body}"
             )
 
-    if cases:
+    if is_asking_notes and cases:
         lines.append("Cok Adimli Vakalar / Projeler:")
         for c in cases:
             lines.append(
@@ -338,28 +365,15 @@ def get_casebook_context(user_query: str = "", limit: int = 15) -> str:
             )
 
     # Eger kullanici belirli bir #ID sorduysa (orn: #2 veya not 2), o notun tam metnini ekle
-    mentioned_ids = {int(m) for m in re.findall(r"(?:#|not\s+|id\s+)(\d+)", user_query.lower())}
+    mentioned_ids = {int(m) for m in re.findall(r"(?:#|not\s+|id\s+)(\d+)", low_q)}
     for mid in mentioned_ids:
         detail = get_note(mid)
         if detail:
             lines.append(f"\n[Not #{mid} Tam Icerigi ('{detail['title']}')]:\n{detail['content'][:1500]}")
 
-    # Semantik / Anahtar Kelime RAG Eşleştiricisi: Kullanıcının sorusundaki kavramlarla eşleşen en alakalı notları çek
-    query_terms = [
-        t for t in re.findall(r"\b\w{3,}\b", user_query.lower())
-        if t not in ("nedir", "nasil", "var", "mi", "ile", "icin", "not", "notlar", "bana", "sunu", "bunu", "hakkinda")
-    ]
-    if query_terms and notes:
-        scored_notes = []
-        for n in list_notes():
-            if n["id"] in mentioned_ids:
-                continue
-            haystack = f"{n['title']} {n['tags']} {n['content']}".lower()
-            score = sum(haystack.count(term) for term in query_terms)
-            if score > 0:
-                scored_notes.append((score, n))
-        scored_notes.sort(key=lambda x: x[0], reverse=True)
-        for _, rel_n in scored_notes[:3]:
+    # Soruyla en alakalı eşleşen notlar varsa tam metinlerini ekle
+    for _, rel_n in scored_notes[:3]:
+        if rel_n["id"] not in mentioned_ids:
             lines.append(
                 f"\n[Soruyla En Alakalı Not #{rel_n['id']} ('{rel_n['title']}')]:\n{rel_n['content'][:1200]}"
             )

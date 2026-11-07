@@ -132,3 +132,4 @@ def run_command_for_analysis(cmd_str: str, timeout: int = 30) -> Tuple[bool, str
         return False, f"Komutu çalıştırma izni yok: `{clean_cmd}`"
     except Exception as exc:
         return False, f"Komut çalıştırılırken hata: {exc}"
+
