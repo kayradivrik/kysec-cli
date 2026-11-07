@@ -441,12 +441,21 @@ def stream_generate(
                 )
             resp.raise_for_status()
 
+            in_think = False
             for line in resp.iter_lines(decode_unicode=True):
                 if not line:
                     continue
                 chunk = json.loads(line)
                 token = chunk.get("response", "")
                 if token:
+                    if "<think>" in token:
+                        token = token.replace("<think>", "\n> 💭 *[DeepSeek R1 Düşünce Zinciri]*\n> ")
+                        in_think = True
+                    if "</think>" in token:
+                        token = token.replace("</think>", "\n\n")
+                        in_think = False
+                    elif in_think:
+                        token = token.replace("\n", "\n> ")
                     yield token
                 if chunk.get("done"):
                     break
@@ -533,6 +542,7 @@ def stream_chat(
                 )
             resp.raise_for_status()
 
+            in_think = False
             for line in resp.iter_lines(decode_unicode=True):
                 if not line:
                     continue
@@ -540,6 +550,14 @@ def stream_chat(
                 msg = chunk.get("message", {})
                 token = msg.get("content", "")
                 if token:
+                    if "<think>" in token:
+                        token = token.replace("<think>", "\n> 💭 *[DeepSeek R1 Düşünce Zinciri]*\n> ")
+                        in_think = True
+                    if "</think>" in token:
+                        token = token.replace("</think>", "\n\n")
+                        in_think = False
+                    elif in_think:
+                        token = token.replace("\n", "\n> ")
                     yield token
                 if chunk.get("done"):
                     break
