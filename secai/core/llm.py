@@ -301,6 +301,86 @@ def _stream_gemini(
     )
 
 
+OPENAI_ENDPOINTS = {
+    "groq": "https://api.groq.com/openai/v1/chat/completions",
+    "deepseek": "https://api.deepseek.com/chat/completions",
+    "openrouter": "https://openrouter.ai/api/v1/chat/completions",
+}
+
+
+def _stream_openai_compat(
+    provider: str,
+    api_key: str,
+    model: str,
+    messages: list[dict],
+    system_prompt: str,
+) -> Generator[str, None, None]:
+    endpoint_url = OPENAI_ENDPOINTS.get(provider, "https://api.groq.com/openai/v1/chat/completions")
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    if provider == "openrouter":
+        headers["HTTP-Referer"] = "https://github.com/kayradivrik/kysec-cli"
+        headers["X-Title"] = "SecAI Cyber Defense"
+
+    full_msgs = []
+    if system_prompt:
+        full_msgs.append({"role": "system", "content": system_prompt})
+    for m in messages:
+        full_msgs.append({"role": m["role"], "content": m["content"]})
+
+    data = {
+        "model": model,
+        "messages": full_msgs,
+        "stream": True,
+        "temperature": 0.2,
+    }
+
+    try:
+        with requests.post(endpoint_url, headers=headers, json=data, stream=True, timeout=(5, 120)) as resp:
+            if resp.status_code != 200:
+                err_body = resp.text[:300]
+                yield f"\n\n**{provider.upper()} API Hatası ({resp.status_code}):** {err_body}\n"
+                return
+
+            in_reasoning = False
+            for raw_line in resp.iter_lines(decode_unicode=True):
+                if not raw_line:
+                    continue
+                line = raw_line.strip()
+                if not line.startswith("data:"):
+                    continue
+                json_str = line[5:].strip()
+                if not json_str or json_str == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(json_str)
+                    choices = chunk.get("choices", [])
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta", {})
+
+                    # DeepSeek R1 Akıl Yürütme (Thinking Chain) Desteği
+                    reasoning = delta.get("reasoning_content", "")
+                    if reasoning:
+                        if not in_reasoning:
+                            yield "\n> 💭 *[DeepSeek R1 Düşünce Zinciri]*\n> "
+                            in_reasoning = True
+                        yield reasoning.replace("\n", "\n> ")
+
+                    content = delta.get("content", "")
+                    if content:
+                        if in_reasoning:
+                            yield "\n\n"
+                            in_reasoning = False
+                        yield content
+                except json.JSONDecodeError:
+                    continue
+    except requests.RequestException as exc:
+        yield f"\n\n**{provider.upper()} Bağlantı Hatası:** {exc}\n"
+
+
 def stream_generate(
     prompt: str,
     system_prompt: str = AUDIT_SYSTEM_PROMPT,
@@ -324,6 +404,16 @@ def stream_generate(
             system_prompt=effective_system,
             model=active_model,
             api_key=llm_info["api_key"],
+        )
+        return
+
+    if llm_info["provider"] in ("groq", "deepseek", "openrouter") and llm_info["api_key"]:
+        yield from _stream_openai_compat(
+            provider=llm_info["provider"],
+            api_key=llm_info["api_key"],
+            model=active_model,
+            messages=[{"role": "user", "content": prompt}],
+            system_prompt=effective_system,
         )
         return
 
@@ -403,6 +493,16 @@ def stream_chat(
             system_prompt=enriched_system_prompt,
             model=active_model,
             api_key=llm_info["api_key"],
+        )
+        return
+
+    if llm_info["provider"] in ("groq", "deepseek", "openrouter") and llm_info["api_key"]:
+        yield from _stream_openai_compat(
+            provider=llm_info["provider"],
+            api_key=llm_info["api_key"],
+            model=active_model,
+            messages=messages,
+            system_prompt=enriched_system_prompt,
         )
         return
 

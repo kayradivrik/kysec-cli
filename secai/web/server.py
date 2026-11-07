@@ -16,8 +16,14 @@ from urllib.parse import urlparse
 
 from secai import __version__
 from secai.config import (
+    DEFAULT_DEEPSEEK_MODEL,
     DEFAULT_GEMINI_MODEL,
+    DEFAULT_GROQ_MODEL,
+    DEFAULT_OPENROUTER_MODEL,
     DEFAULT_TTS_VOICE,
+    DEEPSEEK_MODELS,
+    GROQ_MODELS,
+    OPENROUTER_MODELS,
     get_active_llm_info,
     load_settings,
     save_settings,
@@ -54,7 +60,7 @@ from secai.core.executor import (
     strip_internal_blocks,
 )
 from secai.core.image import generate_image_data, list_generated_images
-from secai.core.intel import format_intel_report
+from secai.core.intel import enrich_abuseipdb, enrich_virustotal, format_intel_report
 from secai.core.llm import OllamaConnectionError, stream_chat, stream_generate
 from secai.core.skills import get_active_skill, list_all_skills, set_active_skill
 from secai.core.voice import (
@@ -156,6 +162,7 @@ def make_handler(token: str):
 
             if path == "/api/models":
                 info = get_active_llm_info()
+                settings = load_settings()
                 ollama_models = []
                 try:
                     import urllib.request
@@ -170,9 +177,18 @@ def make_handler(token: str):
                     {
                         "active_provider": info["provider"],
                         "active_model": info["model"],
-                        "ollama_models": ollama_models or ["gemma3:4b", "qwen2.5-coder:7b"],
-                        "gemini_models": ["gemini-2.5-flash", "gemini-3-flash-preview"],
-                        "has_gemini_key": bool(info["api_key"]),
+                        "active_label": info.get("provider_label", info["provider"]),
+                        "ollama_models": ollama_models or ["qwen2.5-coder:7b", "gemma3:4b"],
+                        "groq_models": GROQ_MODELS,
+                        "deepseek_models": DEEPSEEK_MODELS,
+                        "gemini_models": ["gemini-3-flash-preview", "gemini-3.1-pro-preview"],
+                        "openrouter_models": OPENROUTER_MODELS,
+                        "has_groq_key": bool(settings.get("groq_api_key")),
+                        "has_deepseek_key": bool(settings.get("deepseek_api_key")),
+                        "has_gemini_key": bool(settings.get("gemini_api_key")),
+                        "has_openrouter_key": bool(settings.get("openrouter_api_key")),
+                        "has_vt_key": bool(settings.get("virustotal_api_key")),
+                        "has_abuse_key": bool(settings.get("abuseipdb_api_key")),
                     }
                 )
 
@@ -209,6 +225,19 @@ def make_handler(token: str):
 
             if path == "/api/profile":
                 return self._send_json({"profile": get_user_profile() or ""})
+
+            if path == "/api/settings/keys":
+                s = load_settings()
+                return self._send_json(
+                    {
+                        "groq_api_key": s.get("groq_api_key", ""),
+                        "deepseek_api_key": s.get("deepseek_api_key", ""),
+                        "gemini_api_key": s.get("gemini_api_key", ""),
+                        "openrouter_api_key": s.get("openrouter_api_key", ""),
+                        "virustotal_api_key": s.get("virustotal_api_key", ""),
+                        "abuseipdb_api_key": s.get("abuseipdb_api_key", ""),
+                    }
+                )
 
             if path == "/api/notes":
                 rows = list_notes()
@@ -333,6 +362,32 @@ def make_handler(token: str):
                 report = format_intel_report(query)
                 return self._send_json({"report": report})
 
+            if path == "/api/intel/vt":
+                data = self._read_json()
+                target = data.get("target", "").strip()
+                res = enrich_virustotal(target)
+                if not res:
+                    return self._send_json({"error": "VirusTotal sorgulanamadi veya sonuc bulunamadi (API anahtarinizi kontrol edin)."}, 400)
+                return self._send_json({"ok": True, "data": res})
+
+            if path == "/api/intel/abuse":
+                data = self._read_json()
+                ip = data.get("ip", "").strip()
+                res = enrich_abuseipdb(ip)
+                if not res:
+                    return self._send_json({"error": "AbuseIPDB sorgulanamadi veya gecersiz IP (API anahtarinizi kontrol edin)."}, 400)
+                return self._send_json({"ok": True, "data": res})
+
+            if path == "/api/settings/keys":
+                data = self._read_json()
+                to_save = {}
+                for k in ("groq_api_key", "deepseek_api_key", "gemini_api_key", "openrouter_api_key", "virustotal_api_key", "abuseipdb_api_key"):
+                    if k in data and data[k] is not None:
+                        to_save[k] = data[k].strip()
+                if to_save:
+                    save_settings(to_save)
+                return self._send_json({"ok": True})
+
             if path == "/api/baseline/take":
                 data = self._read_json()
                 label = data.get("label", "web-snap")
@@ -365,6 +420,12 @@ def make_handler(token: str):
                 if model:
                     if provider == "gemini":
                         settings["gemini_model"] = model
+                    elif provider == "groq":
+                        settings["groq_model"] = model
+                    elif provider == "deepseek":
+                        settings["deepseek_model"] = model
+                    elif provider == "openrouter":
+                        settings["openrouter_model"] = model
                     else:
                         settings["ollama_model"] = model
                 save_settings(settings)

@@ -1,6 +1,9 @@
 import ipaddress
 import re
+from typing import Optional
 import requests
+
+from secai.config import load_settings
 
 IPV4_CANDIDATE_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 CVE_RE = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
@@ -118,6 +121,87 @@ def enrich_ip_intel(ip: str) -> dict:
         info["risk"] = "ORTA"
 
     return info
+
+
+def enrich_virustotal(target: str, api_key: Optional[str] = None) -> Optional[dict]:
+    """VirusTotal v3 API üzerinden IP, domain veya dosya hash'i sorgular."""
+    clean = target.strip()
+    if not clean:
+        return None
+
+    key = api_key or load_settings().get("virustotal_api_key", "").strip()
+    if not key:
+        return None
+
+    headers = {"x-apikey": key, "Accept": "application/json"}
+    target_type = "files"
+    if is_public_ipv4(clean):
+        target_type = "ip_addresses"
+    elif SHA256_RE.match(clean) or MD5_RE.match(clean):
+        target_type = "files"
+    elif "." in clean and "/" not in clean:
+        target_type = "domains"
+
+    url = f"https://www.virustotal.com/api/v3/{target_type}/{clean}"
+    try:
+        resp = requests.get(url, headers=headers, timeout=8)
+        if resp.status_code == 200:
+            attrs = resp.json().get("data", {}).get("attributes", {})
+            stats = attrs.get("last_analysis_stats", {})
+            malicious = stats.get("malicious", 0)
+            suspicious = stats.get("suspicious", 0)
+            undetected = stats.get("undetected", 0)
+            harmless = stats.get("harmless", 0)
+            total = malicious + suspicious + undetected + harmless
+            reputation = attrs.get("reputation", 0)
+            return {
+                "target": clean,
+                "type": target_type,
+                "malicious": malicious,
+                "suspicious": suspicious,
+                "undetected": undetected,
+                "harmless": harmless,
+                "total": total,
+                "reputation": reputation,
+                "score_label": f"{malicious}/{total} Zararlı" if total else "Bilinmiyor",
+                "is_dangerous": (malicious > 0 or suspicious > 2),
+            }
+    except Exception:
+        pass
+    return None
+
+
+def enrich_abuseipdb(ip: str, api_key: Optional[str] = None) -> Optional[dict]:
+    """AbuseIPDB v2 API üzerinden IP adresinin kötü niyetlilik ve şikayet geçmişini sorgular."""
+    clean = ip.strip()
+    if not is_public_ipv4(clean):
+        return None
+
+    key = api_key or load_settings().get("abuseipdb_api_key", "").strip()
+    if not key:
+        return None
+
+    headers = {"Key": key, "Accept": "application/json"}
+    params = {"ipAddress": clean, "maxAgeInDays": 90}
+    try:
+        resp = requests.get("https://api.abuseipdb.com/api/v2/check", headers=headers, params=params, timeout=8)
+        if resp.status_code == 200:
+            d = resp.json().get("data", {})
+            score = d.get("abuseConfidenceScore", 0)
+            return {
+                "ip": clean,
+                "abuse_score": score,
+                "total_reports": d.get("totalReports", 0),
+                "country": d.get("countryCode", "-"),
+                "isp": d.get("isp", "-"),
+                "domain": d.get("domain", "-"),
+                "is_whitelisted": bool(d.get("isWhitelisted", False)),
+                "last_reported_at": d.get("lastReportedAt", "-"),
+                "risk": "KRITIK" if score >= 75 else "YUKSEK" if score >= 40 else "ORTA" if score >= 15 else "DUSUK",
+            }
+    except Exception:
+        pass
+    return None
 
 
 def format_intel_report(text_or_ip: str, max_ips: int = 8) -> str:

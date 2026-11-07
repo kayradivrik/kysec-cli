@@ -10,7 +10,28 @@ APP_NAME = "secai"
 DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 DEFAULT_OLLAMA_MODEL = os.environ.get("SECAI_MODEL", "qwen2.5-coder:7b")
 DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
+DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_DEEPSEEK_MODEL = "deepseek-reasoner"
+DEFAULT_OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 DEFAULT_TTS_VOICE = "tr-TR-AhmetNeural"
+
+GROQ_MODELS = [
+    "llama-3.3-70b-versatile",
+    "qwen-2.5-coder-32b",
+    "deepseek-r1-distill-llama-70b",
+    "mixtral-8x7b-32768",
+]
+
+DEEPSEEK_MODELS = [
+    "deepseek-reasoner",
+    "deepseek-chat",
+]
+
+OPENROUTER_MODELS = [
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "deepseek/deepseek-r1:free",
+    "qwen/qwen-2.5-coder-32b-instruct:free",
+]
 
 
 def get_data_dir() -> Path:
@@ -60,6 +81,14 @@ def load_settings() -> dict:
         "provider": "ollama",
         "gemini_api_key": os.environ.get("GEMINI_API_KEY", ""),
         "gemini_model": DEFAULT_GEMINI_MODEL,
+        "groq_api_key": os.environ.get("GROQ_API_KEY", ""),
+        "groq_model": DEFAULT_GROQ_MODEL,
+        "deepseek_api_key": os.environ.get("DEEPSEEK_API_KEY", ""),
+        "deepseek_model": DEFAULT_DEEPSEEK_MODEL,
+        "openrouter_api_key": os.environ.get("OPENROUTER_API_KEY", ""),
+        "openrouter_model": DEFAULT_OPENROUTER_MODEL,
+        "virustotal_api_key": os.environ.get("VIRUSTOTAL_API_KEY", ""),
+        "abuseipdb_api_key": os.environ.get("ABUSEIPDB_API_KEY", ""),
         "ollama_model": DEFAULT_OLLAMA_MODEL,
         "ollama_url": DEFAULT_OLLAMA_URL,
         "tts_enabled": False,
@@ -79,6 +108,12 @@ def load_settings() -> dict:
 
     if os.environ.get("GEMINI_API_KEY") and not defaults.get("gemini_api_key"):
         defaults["gemini_api_key"] = os.environ["GEMINI_API_KEY"]
+    if os.environ.get("GROQ_API_KEY") and not defaults.get("groq_api_key"):
+        defaults["groq_api_key"] = os.environ["GROQ_API_KEY"]
+    if os.environ.get("DEEPSEEK_API_KEY") and not defaults.get("deepseek_api_key"):
+        defaults["deepseek_api_key"] = os.environ["DEEPSEEK_API_KEY"]
+    if os.environ.get("OPENROUTER_API_KEY") and not defaults.get("openrouter_api_key"):
+        defaults["openrouter_api_key"] = os.environ["OPENROUTER_API_KEY"]
 
     return defaults
 
@@ -94,22 +129,51 @@ def save_settings(new_settings: dict) -> None:
 
 def get_active_llm_info() -> dict:
     s = load_settings()
-    has_key = bool(s.get("gemini_api_key", "").strip())
     provider = s.get("provider", "ollama")
 
-    if provider == "gemini" and has_key:
+    gemini_key = s.get("gemini_api_key", "").strip()
+    groq_key = s.get("groq_api_key", "").strip()
+    deepseek_key = s.get("deepseek_api_key", "").strip()
+    openrouter_key = s.get("openrouter_api_key", "").strip()
+
+    if provider == "groq" and groq_key:
+        return {
+            "provider": "groq",
+            "provider_label": "Groq LPU (Ultra Hızlı)",
+            "model": s.get("groq_model", DEFAULT_GROQ_MODEL),
+            "api_key": groq_key,
+            "ollama_url": s.get("ollama_url", DEFAULT_OLLAMA_URL),
+        }
+    if provider == "deepseek" and deepseek_key:
+        return {
+            "provider": "deepseek",
+            "provider_label": "DeepSeek R1 / V3 Reasoning",
+            "model": s.get("deepseek_model", DEFAULT_DEEPSEEK_MODEL),
+            "api_key": deepseek_key,
+            "ollama_url": s.get("ollama_url", DEFAULT_OLLAMA_URL),
+        }
+    if provider == "openrouter" and openrouter_key:
+        return {
+            "provider": "openrouter",
+            "provider_label": "OpenRouter Universal",
+            "model": s.get("openrouter_model", DEFAULT_OPENROUTER_MODEL),
+            "api_key": openrouter_key,
+            "ollama_url": s.get("ollama_url", DEFAULT_OLLAMA_URL),
+        }
+    if provider == "gemini" and gemini_key:
         return {
             "provider": "gemini",
             "provider_label": "Google Gemini API",
             "model": s.get("gemini_model", DEFAULT_GEMINI_MODEL),
-            "api_key": s["gemini_api_key"].strip(),
+            "api_key": gemini_key,
             "ollama_url": s.get("ollama_url", DEFAULT_OLLAMA_URL),
         }
+
     return {
         "provider": "ollama",
-        "provider_label": "Local Ollama",
+        "provider_label": "Local Ollama (RTX 4050)",
         "model": s.get("ollama_model", DEFAULT_OLLAMA_MODEL),
-        "api_key": s.get("gemini_api_key", "").strip(),
+        "api_key": gemini_key or groq_key or deepseek_key or openrouter_key,
         "ollama_url": s.get("ollama_url", DEFAULT_OLLAMA_URL),
     }
 

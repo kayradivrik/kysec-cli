@@ -19,8 +19,14 @@ except ImportError:
 from secai import __version__
 from secai.commands.note_cmd import note_list, note_show
 from secai.config import (
+    DEFAULT_DEEPSEEK_MODEL,
     DEFAULT_GEMINI_MODEL,
+    DEFAULT_GROQ_MODEL,
     DEFAULT_OLLAMA_MODEL,
+    DEFAULT_OPENROUTER_MODEL,
+    DEEPSEEK_MODELS,
+    GROQ_MODELS,
+    OPENROUTER_MODELS,
     get_active_llm_info,
     get_data_dir,
     get_user_host_cwd,
@@ -72,7 +78,12 @@ from secai.core.executor import (
     prompt_and_execute,
     strip_internal_blocks,
 )
-from secai.core.intel import extract_iocs, format_intel_report
+from secai.core.intel import (
+    enrich_abuseipdb,
+    enrich_virustotal,
+    extract_iocs,
+    format_intel_report,
+)
 from secai.core.llm import OllamaConnectionError, check_ollama, stream_chat, stream_generate
 from secai.core.skills import (
     create_custom_skill,
@@ -100,6 +111,10 @@ SLASH_COMMANDS = [
     "/img",
     "/ciz",
     "/gorsel",
+    "/vt",
+    "/virustotal",
+    "/abuse",
+    "/abuseipdb",
     "/agent",
     "/agents",
     "/ajan",
@@ -255,10 +270,12 @@ def show_shortcuts() -> None:
     table.add_row("/v veya /talk", "Bas-Konus: Mikrofondan sesli emir ver, SecAI sesli ve yazili yanitlasin")
     table.add_row("/voice", "Canli Sesli Diyalog (Telsiz Modu): Karsilikli kesintisiz sesli sohbet")
     table.add_row("/ses veya /tts", "Ses ayarlarini yonet (Ahmet/Emel ses secimi, yazili sohbette ses ac/kapat)")
-    table.add_row("/api", "Gemini API Token ekle veya degistir (veya dogrudan AIza... yapistir)")
-    table.add_row("/model", "Aktif modeli degistir (Gemini 3 Flash / Pro / Yerel Ollama)")
+    table.add_row("/api", "API Anahtarlarını yönet (Groq, DeepSeek, Gemini, OpenRouter, VT, Abuse)")
+    table.add_row("/model", "Aktif AI Motorunu değiştir (Groq 500t/s, DeepSeek R1, Gemini, Ollama)")
     table.add_row("/skills", "SecOps yeteneklerini (recon, hardening, detection, ctf) sec veya yeni skill ekle")
     table.add_row("/intel <ip/log>", "Shodan InternetDB & GeoIP ile IP/CVE/Hash tehdit istihbarati sorgula")
+    table.add_row("/vt <hedef>", "VirusTotal v3 ile IP, Domain veya Hash (MD5/SHA256) güvenlik taraması")
+    table.add_row("/abuse <ip>", "AbuseIPDB v2 ile IP kötü niyetlilik ve saldırı itibar kontrolü")
     table.add_row("/baseline", "Sistemin temiz referans goruntusunu (portlar, servisler, SHA256) al")
     table.add_row("/diff", "Mevcut sistemi son baseline ile karsilastir (arka kapi / degisim tespiti)")
     table.add_row("/score", "Deterministik CIS Linux Guvenlik & Sikilastirma Puanini (0-100) hesapla")
@@ -281,91 +298,283 @@ def show_shortcuts() -> None:
 
 
 def configure_api_key(inline_key: str = "") -> None:
-    if inline_key:
-        key = inline_key.strip()
-    else:
-        console.print(
-            "\n[dim]Google AI Studio (https://aistudio.google.com/apikey) uzerinden ucretsiz alabilirsiniz.[/dim]"
-        )
-        key = Prompt.ask("[bold cyan]Gemini API Key[/bold cyan]").strip()
+    raw = inline_key.strip()
+    parts = raw.split(maxsplit=1)
+    sub = parts[0].lower() if parts else ""
+    val = parts[1].strip() if len(parts) > 1 else ""
 
-    if not key:
-        console.print("[yellow][!] Islem iptal edildi.[/yellow]\n")
+    if sub in ("vt", "virustotal") and val:
+        save_settings({"virustotal_api_key": val})
+        console.print("\n[bold green][+][/bold green] VirusTotal API anahtarı kaydedildi.\n")
         return
 
-    save_settings(
-        {
-            "gemini_api_key": key,
-            "provider": "gemini",
-            "gemini_model": DEFAULT_GEMINI_MODEL,
-        }
-    )
-    render_top_banner()
+    if sub in ("abuse", "abuseipdb") and val:
+        save_settings({"abuseipdb_api_key": val})
+        console.print("\n[bold green][+][/bold green] AbuseIPDB API anahtarı kaydedildi.\n")
+        return
+
+    if sub in ("groq", "gsk") and val:
+        save_settings({"groq_api_key": val, "provider": "groq", "groq_model": DEFAULT_GROQ_MODEL})
+        render_top_banner()
+        console.print(f"\n[bold green][+][/bold green] Groq API anahtarı kaydedildi ve [cyan]{DEFAULT_GROQ_MODEL}[/cyan] (500 tok/sn) aktif edildi!\n")
+        return
+
+    if sub in ("deepseek", "r1") and val:
+        save_settings({"deepseek_api_key": val, "provider": "deepseek", "deepseek_model": DEFAULT_DEEPSEEK_MODEL})
+        render_top_banner()
+        console.print(f"\n[bold green][+][/bold green] DeepSeek API anahtarı kaydedildi ve [cyan]{DEFAULT_DEEPSEEK_MODEL} (R1 Akıl Yürütme)[/cyan] aktif edildi!\n")
+        return
+
+    if sub in ("openrouter",) and val:
+        save_settings({"openrouter_api_key": val, "provider": "openrouter", "openrouter_model": DEFAULT_OPENROUTER_MODEL})
+        render_top_banner()
+        console.print(f"\n[bold green][+][/bold green] OpenRouter API anahtarı kaydedildi ve [cyan]{DEFAULT_OPENROUTER_MODEL}[/cyan] aktif edildi!\n")
+        return
+
+    # Doğrudan anahtar yapıştırıldıysa otomatik tanı:
+    if raw.startswith("gsk_"):
+        save_settings({"groq_api_key": raw, "provider": "groq", "groq_model": DEFAULT_GROQ_MODEL})
+        render_top_banner()
+        console.print(f"\n[bold green][+][/bold green] Groq API anahtarı algılandı ve [cyan]{DEFAULT_GROQ_MODEL}[/cyan] (500 tok/sn) aktif edildi!\n")
+        return
+
+    if raw.startswith("sk-or-"):
+        save_settings({"openrouter_api_key": raw, "provider": "openrouter", "openrouter_model": DEFAULT_OPENROUTER_MODEL})
+        render_top_banner()
+        console.print(f"\n[bold green][+][/bold green] OpenRouter API anahtarı algılandı ve [cyan]{DEFAULT_OPENROUTER_MODEL}[/cyan] aktif edildi!\n")
+        return
+
+    if raw.startswith("AIza"):
+        save_settings({"gemini_api_key": raw, "provider": "gemini", "gemini_model": DEFAULT_GEMINI_MODEL})
+        render_top_banner()
+        console.print(f"\n[bold green][+][/bold green] Gemini API anahtarı kaydedildi ve [cyan]{DEFAULT_GEMINI_MODEL}[/cyan] aktif edildi.\n")
+        return
+
+    if raw.startswith("sk-"):
+        save_settings({"deepseek_api_key": raw, "provider": "deepseek", "deepseek_model": DEFAULT_DEEPSEEK_MODEL})
+        render_top_banner()
+        console.print(f"\n[bold green][+][/bold green] DeepSeek API anahtarı algılandı ve [cyan]{DEFAULT_DEEPSEEK_MODEL} (R1 Akıl Yürütme)[/cyan] aktif edildi!\n")
+        return
+
     console.print(
-        f"[bold green][+][/bold green] Gemini API anahtari kaydedildi ve [bold cyan]{DEFAULT_GEMINI_MODEL}[/bold cyan] aktif edildi.\n"
+        Panel(
+            "[bold white]SecAI Evrensel API & Model Sağlayıcıları[/bold white]\n\n"
+            "  [cyan]1[/cyan]  ⚡ Groq API Key       [dim](Ücretsiz, 500 tok/sn Llama-3.3 70B & Qwen 32B - console.groq.com)[/dim]\n"
+            "  [cyan]2[/cyan]  🧠 DeepSeek API Key   [dim](DeepSeek R1 Derin Düşünce & V3 - platform.deepseek.com)[/dim]\n"
+            "  [cyan]3[/cyan]  🌐 Google Gemini Key  [dim](Gemini 3 Flash & Pro - aistudio.google.com)[/dim]\n"
+            "  [cyan]4[/cyan]  🧭 OpenRouter Key     [dim](Tüm Ücretsiz Modeller :free - openrouter.ai)[/dim]\n"
+            "  [cyan]5[/cyan]  🛡️ VirusTotal API Key [dim](70+ Antivirüs ile Hash & IP Tarama - virustotal.com)[/dim]\n"
+            "  [cyan]6[/cyan]  ⚡ AbuseIPDB API Key  [dim](IP İtibar & Saldırı Raporlama - abuseipdb.com)[/dim]\n"
+            "  [cyan]0[/cyan]  İptal\n\n"
+            "[dim]İpucu: Anahtarı doğrudan '/api gsk_...' veya '/api AIza...' şeklinde yapıştırabilirsiniz.[/dim]",
+            title="🔑 API Anahtarları",
+            border_style="cyan",
+        )
     )
+    ch = Prompt.ask("Seçim", choices=["1", "2", "3", "4", "5", "6", "0"], default="1")
+    if ch == "0":
+        return
+    if ch == "1":
+        k = Prompt.ask("[bold cyan]Groq API Key (gsk_...)[/bold cyan]").strip()
+        if k:
+            save_settings({"groq_api_key": k, "provider": "groq", "groq_model": DEFAULT_GROQ_MODEL})
+            render_top_banner()
+            console.print(f"\n[bold green][+][/bold green] Groq aktif edildi: [cyan]{DEFAULT_GROQ_MODEL}[/cyan]\n")
+    elif ch == "2":
+        k = Prompt.ask("[bold cyan]DeepSeek API Key (sk-...)[/bold cyan]").strip()
+        if k:
+            save_settings({"deepseek_api_key": k, "provider": "deepseek", "deepseek_model": DEFAULT_DEEPSEEK_MODEL})
+            render_top_banner()
+            console.print(f"\n[bold green][+][/bold green] DeepSeek R1 aktif edildi: [cyan]{DEFAULT_DEEPSEEK_MODEL}[/cyan]\n")
+    elif ch == "3":
+        k = Prompt.ask("[bold cyan]Gemini API Key[/bold cyan]").strip()
+        if k:
+            save_settings({"gemini_api_key": k, "provider": "gemini", "gemini_model": DEFAULT_GEMINI_MODEL})
+            render_top_banner()
+            console.print(f"\n[bold green][+][/bold green] Gemini aktif edildi: [cyan]{DEFAULT_GEMINI_MODEL}[/cyan]\n")
+    elif ch == "4":
+        k = Prompt.ask("[bold cyan]OpenRouter API Key (sk-or-...)[/bold cyan]").strip()
+        if k:
+            save_settings({"openrouter_api_key": k, "provider": "openrouter", "openrouter_model": DEFAULT_OPENROUTER_MODEL})
+            render_top_banner()
+            console.print(f"\n[bold green][+][/bold green] OpenRouter aktif edildi: [cyan]{DEFAULT_OPENROUTER_MODEL}[/cyan]\n")
+    elif ch == "5":
+        k = Prompt.ask("[bold cyan]VirusTotal API Key[/bold cyan]").strip()
+        if k:
+            save_settings({"virustotal_api_key": k})
+            console.print("\n[bold green][+][/bold green] VirusTotal API anahtarı kaydedildi.\n")
+    elif ch == "6":
+        k = Prompt.ask("[bold cyan]AbuseIPDB API Key[/bold cyan]").strip()
+        if k:
+            save_settings({"abuseipdb_api_key": k})
+            console.print("\n[bold green][+][/bold green] AbuseIPDB API anahtarı kaydedildi.\n")
 
 
 def switch_model_interactive() -> None:
     s = load_settings()
-    has_key = bool(s.get("gemini_api_key", "").strip())
     active_info = get_active_llm_info()
     active_model_name = active_info["model"]
     active_provider = active_info["provider"]
 
+    has_gemini = bool(s.get("gemini_api_key", "").strip())
+    has_groq = bool(s.get("groq_api_key", "").strip())
+    has_deepseek = bool(s.get("deepseek_api_key", "").strip())
+    has_openrouter = bool(s.get("openrouter_api_key", "").strip())
+
     ollama_state = check_ollama()
     local_models = ollama_state.get("models", []) or [DEFAULT_OLLAMA_MODEL]
 
-    console.print("\n[bold white]Model / Motor Secimi (Kurulu Modeller Otomatik Listelenir)[/bold white]")
-    g1_mark = " [bold green][AKTIF][/bold green]" if active_provider == "gemini" and active_model_name == "gemini-3-flash-preview" else ""
-    g2_mark = " [bold green][AKTIF][/bold green]" if active_provider == "gemini" and active_model_name == "gemini-3.1-pro-preview" else ""
+    console.print("\n[bold white]🧠 Model & Yapay Zeka Motoru Seçimi[/bold white]\n")
 
-    console.print(
-        f"  [cyan]1[/cyan]  gemini-3-flash-preview   [dim](Google Gemini 3 Flash - Bulut / Cok Hizli {'[Hazir]' if has_key else '[Key Gerekli]'})[/dim]{g1_mark}\n"
-        f"  [cyan]2[/cyan]  gemini-3.1-pro-preview   [dim](Google Gemini 3.1 Pro - Bulut / Derin Analiz {'[Hazir]' if has_key else '[Key Gerekli]'})[/dim]{g2_mark}"
-    )
-    choices = ["1", "2", "i", "0"]
-    for idx, m_name in enumerate(local_models, start=3):
-        key_str = str(idx)
-        choices.append(key_str)
-        l_mark = " [bold green][AKTIF][/bold green]" if active_provider == "ollama" and active_model_name == m_name else ""
-        console.print(f"  [cyan]{key_str}[/cyan]  {m_name:<24} [dim](Local Ollama - %100 Yerel / GPU)[/dim]{l_mark}")
+    # Group 1: Local RTX 4050
+    console.print("[bold green]── 🖥️ YEREL GPU (RTX 4050 / Ollama - Çevrimdışı & Kotasız) ──[/bold green]")
+    model_map = {}
+    idx = 1
+    for m in local_models:
+        cur = " [bold green][AKTİF][/bold green]" if active_provider == "ollama" and active_model_name == m else ""
+        console.print(f"  [cyan]{idx:<2}[/cyan] {m:<30} [dim](%100 Yerel / 40+ tok/sn)[/dim]{cur}")
+        model_map[str(idx)] = ("ollama", m)
+        idx += 1
 
-    console.print(
-        "  [cyan]i[/cyan]  Yeni yerel model indir (orn: gemma3:4b, qwen2.5-coder:3b)\n"
-        "  [cyan]0[/cyan]  Iptal\n"
-    )
+    # Group 2: Groq Ultra Fast
+    console.print(f"\n[bold cyan]── ⚡ GROQ LPU (Ultra Hızlı - 500 tok/sn {'[Key Var]' if has_groq else '[Key Gerekli]'}) ──[/bold cyan]")
+    for m in GROQ_MODELS:
+        cur = " [bold green][AKTİF][/bold green]" if active_provider == "groq" and active_model_name == m else ""
+        console.print(f"  [cyan]{idx:<2}[/cyan] {m:<30} [dim](Groq / LPU Cloud)[/dim]{cur}")
+        model_map[str(idx)] = ("groq", m)
+        idx += 1
 
-    choice = Prompt.ask("Secim", choices=choices, default="1" if has_key else "3")
+    # Group 3: DeepSeek R1 Reasoning
+    console.print(f"\n[bold magenta]── 🧠 DEEPSEEK REASONING (Derin Akıl Yürütme & V3 {'[Key Var]' if has_deepseek else '[Key Gerekli]'}) ──[/bold magenta]")
+    for m in DEEPSEEK_MODELS:
+        cur = " [bold green][AKTİF][/bold green]" if active_provider == "deepseek" and active_model_name == m else ""
+        label = "R1 Akıl Yürütme (Thinking Chain)" if "reasoner" in m else "V3 Genel & Kod"
+        console.print(f"  [cyan]{idx:<2}[/cyan] {m:<30} [dim]({label})[/dim]{cur}")
+        model_map[str(idx)] = ("deepseek", m)
+        idx += 1
+
+    # Group 4: Google Gemini
+    console.print(f"\n[bold blue]── 🌐 GOOGLE GEMINI (Bulut LLM {'[Key Var]' if has_gemini else '[Key Gerekli]'}) ──[/bold blue]")
+    for m in ("gemini-3-flash-preview", "gemini-3.1-pro-preview"):
+        cur = " [bold green][AKTİF][/bold green]" if active_provider == "gemini" and active_model_name == m else ""
+        console.print(f"  [cyan]{idx:<2}[/cyan] {m:<30} [dim](Google AI Studio)[/dim]{cur}")
+        model_map[str(idx)] = ("gemini", m)
+        idx += 1
+
+    # Group 5: OpenRouter
+    console.print(f"\n[bold yellow]── 🧭 OPENROUTER (Evrensel Ücretsiz Modeller {'[Key Var]' if has_openrouter else '[Key Gerekli]'}) ──[/bold yellow]")
+    for m in OPENROUTER_MODELS:
+        cur = " [bold green][AKTİF][/bold green]" if active_provider == "openrouter" and active_model_name == m else ""
+        console.print(f"  [cyan]{idx:<2}[/cyan] {m:<30} [dim](Ücretsiz Açık Kaynak)[/dim]{cur}")
+        model_map[str(idx)] = ("openrouter", m)
+        idx += 1
+
+    console.print("\n  [cyan]i[/cyan]  Yeni yerel Ollama modeli indir (örn: qwen2.5-coder:3b)")
+    console.print("  [cyan]0[/cyan]  İptal\n")
+
+    choices = list(model_map.keys()) + ["i", "0"]
+    choice = Prompt.ask("Seçiminiz", choices=choices, default="1")
     if choice == "0":
         return
 
     if choice == "i":
-        new_model = Prompt.ask(
-            "Indirilecek Ollama modeli",
-            default="gemma3:4b",
-        ).strip()
+        new_model = Prompt.ask("İndirilecek Ollama modeli", default="qwen2.5-coder:3b").strip()
         if new_model:
             prompt_and_execute(f"ollama pull {new_model}")
             save_settings({"provider": "ollama", "ollama_model": new_model})
             render_top_banner()
-            console.print(f"[bold green][+][/bold green] '{new_model}' indirildi ve aktif model yapildi.\n")
+            console.print(f"[bold green][+][/bold green] '{new_model}' indirildi ve aktif model yapıldı.\n")
         return
 
-    if choice in ("1", "2"):
-        target_model = "gemini-3-flash-preview" if choice == "1" else "gemini-3.1-pro-preview"
-        if not has_key:
-            configure_api_key()
-            save_settings({"provider": "gemini", "gemini_model": target_model})
-        else:
-            save_settings({"provider": "gemini", "gemini_model": target_model})
-            render_top_banner()
-            console.print(f"[bold green][+][/bold green] Aktif model: [cyan]{target_model}[/cyan]\n")
-    else:
-        picked_local = local_models[int(choice) - 3]
-        save_settings({"provider": "ollama", "ollama_model": picked_local})
-        render_top_banner()
-        console.print(f"[bold green][+][/bold green] Aktif model: [cyan]{picked_local} (Local Ollama)[/cyan]\n")
+    prov, mod = model_map[choice]
+    # Key kontrolü
+    if prov == "groq" and not has_groq:
+        console.print("\n[yellow][!] Groq API anahtarı gerekli.[/yellow]")
+        configure_api_key("groq")
+    elif prov == "deepseek" and not has_deepseek:
+        console.print("\n[yellow][!] DeepSeek API anahtarı gerekli.[/yellow]")
+        configure_api_key("deepseek")
+    elif prov == "gemini" and not has_gemini:
+        console.print("\n[yellow][!] Gemini API anahtarı gerekli.[/yellow]")
+        configure_api_key("gemini")
+    elif prov == "openrouter" and not has_openrouter:
+        console.print("\n[yellow][!] OpenRouter API anahtarı gerekli.[/yellow]")
+        configure_api_key("openrouter")
+
+    save_settings({"provider": prov, f"{prov}_model" if prov != "ollama" else "ollama_model": mod})
+    render_top_banner()
+    console.print(f"\n[bold green][+][/bold green] Aktif Yapay Zeka Motoru: [cyan]{mod} ({prov.upper()})[/cyan]\n")
+
+
+def interactive_vt(inline_target: str = "") -> None:
+    target = inline_target.strip()
+    if not target:
+        target = Prompt.ask("\n[bold cyan]Sorgulanacak IP, Domain veya SHA256/MD5 Hash[/bold cyan]").strip()
+        if not target:
+            return
+
+    s = load_settings()
+    vt_key = s.get("virustotal_api_key", "").strip()
+    if not vt_key:
+        console.print("\n[yellow][!] VirusTotal API anahtarı tanımlı değil.[/yellow]")
+        console.print("[dim]https://www.virustotal.com/ üzerinden ücretsiz alıp '/api vt <key>' ile ekleyebilirsiniz.[/dim]\n")
+        return
+
+    with console.status(f"[bold cyan]🔍 VirusTotal v3 taranıyor: {target}...[/bold cyan]", spinner="dots"):
+        res = enrich_virustotal(target)
+
+    if not res:
+        console.print(f"[yellow][!] VirusTotal üzerinde '{target}' için kayıt bulunamadı veya API hatası oluştu.[/yellow]\n")
+        return
+
+    color = "red" if res["is_dangerous"] else "green"
+    badge = "[bold red]🚨 ZARARLI TESPİT EDİLDİ[/bold red]" if res["is_dangerous"] else "[bold green]✓ TEMİZ / GÜVENLİ[/bold green]"
+    console.print(
+        Panel(
+            f"{badge}\n\n"
+            f"[bold]Hedef:[/bold] [cyan]{res['target']}[/cyan] ({res['type']})\n"
+            f"[bold]Tespit Skoru:[/bold] [{color}]{res['score_label']}[/{color}]\n"
+            f"[bold]Zararlı:[/bold] {res['malicious']}  |  [bold]Şüpheli:[/bold] {res['suspicious']}  |  [bold]Temiz/Atlanan:[/bold] {res['harmless'] + res['undetected']}\n"
+            f"[bold]Topluluk İtibarı:[/bold] {res['reputation']}\n",
+            title="🛡️ VirusTotal v3 Tehdit İstihbaratı",
+            border_style=color,
+        )
+    )
+
+
+def interactive_abuse(inline_ip: str = "") -> None:
+    ip = inline_ip.strip()
+    if not ip:
+        ip = Prompt.ask("\n[bold cyan]Sorgulanacak Dış IPv4 Adresi[/bold cyan]").strip()
+        if not ip:
+            return
+
+    s = load_settings()
+    key = s.get("abuseipdb_api_key", "").strip()
+    if not key:
+        console.print("\n[yellow][!] AbuseIPDB API anahtarı tanımlı değil.[/yellow]")
+        console.print("[dim]https://www.abuseipdb.com/ üzerinden ücretsiz alıp '/api abuse <key>' ile ekleyebilirsiniz.[/dim]\n")
+        return
+
+    with console.status(f"[bold cyan]⚡ AbuseIPDB taranıyor: {ip}...[/bold cyan]", spinner="dots"):
+        res = enrich_abuseipdb(ip)
+
+    if not res:
+        console.print(f"[yellow][!] AbuseIPDB üzerinde '{ip}' için kayıt bulunamadı veya geçersiz IP.[/yellow]\n")
+        return
+
+    color = "red" if res["abuse_score"] >= 40 else "yellow" if res["abuse_score"] >= 15 else "green"
+    console.print(
+        Panel(
+            f"[bold]Kötü Niyetlilik Skoru:[/bold] [{color}]%{res['abuse_score']} ({res['risk']})[/{color}]\n\n"
+            f"[bold]IP:[/bold] [cyan]{res['ip']}[/cyan]  |  [bold]Ülke:[/bold] {res['country']}  |  [bold]ISP:[/bold] {res['isp']}\n"
+            f"[bold]Toplam Şikayet / Rapor:[/bold] {res['total_reports']} adet\n"
+            f"[bold]Son Şikayet Tarihi:[/bold] {res['last_reported_at']}\n"
+            f"[bold]Beyaz Liste:[/bold] {'Evet' if res['is_whitelisted'] else 'Hayır'}\n",
+            title="⚡ AbuseIPDB Saldırı & İtibar Analizi",
+            border_style=color,
+        )
+    )
 
 
 def manage_infomy_interactive(inline_info: str = "") -> None:
@@ -1282,6 +1491,18 @@ def run_interactive_menu(status_callback=None) -> None:
                 parts = user_input.split(maxsplit=1)
                 target = parts[1] if len(parts) > 1 else ""
                 interactive_intel(inline_target=target)
+                continue
+
+            if low in ("/vt", "/virustotal") or low.startswith(("/vt ", "/virustotal ")):
+                parts = user_input.split(maxsplit=1)
+                target = parts[1] if len(parts) > 1 else ""
+                interactive_vt(inline_target=target)
+                continue
+
+            if low in ("/abuse", "/abuseipdb") or low.startswith(("/abuse ", "/abuseipdb ")):
+                parts = user_input.split(maxsplit=1)
+                ip = parts[1] if len(parts) > 1 else ""
+                interactive_abuse(inline_ip=ip)
                 continue
 
             if low.startswith("/baseline") or low == "baseline":

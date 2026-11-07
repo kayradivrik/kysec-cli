@@ -292,8 +292,85 @@ class SecAITestSuite(unittest.TestCase):
             self.assertEqual(resp_pdf.headers.get("Content-Type"), "application/pdf")
             self.assertGreater(len(resp_pdf.read()), 500)
 
+        # Test /api/models with new provider fields
+        status, models_res = req("/api/models")
+        self.assertEqual(status, 200)
+        self.assertIn("groq_models", models_res)
+        self.assertIn("deepseek_models", models_res)
+        self.assertIn("openrouter_models", models_res)
+
+        # Test /api/settings/keys GET & POST
+        status, keys_post = req("/api/settings/keys", method="POST", data={"groq_api_key": "gsk_test123", "virustotal_api_key": "vt_test123"})
+        self.assertEqual(status, 200)
+        status, keys_get = req("/api/settings/keys")
+        self.assertEqual(status, 200)
+        self.assertEqual(keys_get["groq_api_key"], "gsk_test123")
+        self.assertEqual(keys_get["virustotal_api_key"], "vt_test123")
+
         server.shutdown()
         server.server_close()
+
+    def test_multi_provider_llm_config(self):
+        from secai.config import get_active_llm_info, save_settings
+
+        save_settings({"provider": "groq", "groq_api_key": "gsk_unit_test", "groq_model": "llama-3.3-70b-versatile"})
+        info = get_active_llm_info()
+        self.assertEqual(info["provider"], "groq")
+        self.assertEqual(info["model"], "llama-3.3-70b-versatile")
+        self.assertEqual(info["api_key"], "gsk_unit_test")
+
+        save_settings({"provider": "deepseek", "deepseek_api_key": "sk_ds_test", "deepseek_model": "deepseek-reasoner"})
+        info_ds = get_active_llm_info()
+        self.assertEqual(info_ds["provider"], "deepseek")
+        self.assertEqual(info_ds["model"], "deepseek-reasoner")
+
+        save_settings({"provider": "openrouter", "openrouter_api_key": "sk-or-test", "openrouter_model": "meta-llama/llama-3.3-70b-instruct:free"})
+        info_or = get_active_llm_info()
+        self.assertEqual(info_or["provider"], "openrouter")
+
+    def test_threat_intel_virustotal_and_abuseipdb(self):
+        from unittest.mock import MagicMock, patch
+        from secai.core.intel import enrich_abuseipdb, enrich_virustotal
+
+        # Without keys, returns None safely
+        self.assertIsNone(enrich_virustotal("8.8.8.8", api_key=""))
+        self.assertIsNone(enrich_abuseipdb("8.8.8.8", api_key=""))
+
+        # With mock response for VT
+        mock_vt_resp = MagicMock()
+        mock_vt_resp.status_code = 200
+        mock_vt_resp.json.return_value = {
+            "data": {
+                "attributes": {
+                    "last_analysis_stats": {"malicious": 5, "suspicious": 1, "undetected": 10, "harmless": 60},
+                    "reputation": -15,
+                }
+            }
+        }
+        with patch("requests.get", return_value=mock_vt_resp):
+            res = enrich_virustotal("1.2.3.4", api_key="mock_vt_key")
+            self.assertIsNotNone(res)
+            self.assertEqual(res["malicious"], 5)
+            self.assertTrue(res["is_dangerous"])
+
+        # With mock response for AbuseIPDB
+        mock_abuse_resp = MagicMock()
+        mock_abuse_resp.status_code = 200
+        mock_abuse_resp.json.return_value = {
+            "data": {
+                "abuseConfidenceScore": 85,
+                "totalReports": 42,
+                "countryCode": "RU",
+                "isp": "Evil ISP",
+                "isWhitelisted": False,
+                "lastReportedAt": "2026-11-06T10:00:00Z",
+            }
+        }
+        with patch("requests.get", return_value=mock_abuse_resp):
+            res = enrich_abuseipdb("185.220.101.5", api_key="mock_abuse_key")
+            self.assertIsNotNone(res)
+            self.assertEqual(res["abuse_score"], 85)
+            self.assertEqual(res["risk"], "KRITIK")
 
 
 if __name__ == "__main__":

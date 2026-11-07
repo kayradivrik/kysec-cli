@@ -43,6 +43,7 @@ const Icon = {
   Image: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`,
   Edit: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>`,
   Cpu: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg>`,
+  Key: () => html`<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="m21 2-2 2m-1.5 1.5L14 9l-3 3-2-2-4 4 3 3 7-7 1.5-1.5M21 2l-3 3m3-3v5m0-5h-5"></path><circle cx="7.5" cy="16.5" r="3.5"></circle></svg>`,
 };
 
 // --- Audio Player Manager (Edge Neural TTS) ---
@@ -603,26 +604,66 @@ function ChatView({ activeSession, setActiveSession, sessions, setSessions, acti
     </div>`;
 }
 
-// --- Threat Intel (Shodan InternetDB & GeoIP) Workspace ---
+// --- Threat Intel (Shodan, VirusTotal v3 & AbuseIPDB v2) Workspace ---
 function IntelView({ onSendToChat }) {
+  const [intelTab, setIntelTab] = useState("shodan"); // "shodan" | "vt" | "abuse"
   const [query, setQuery] = useState("");
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [vtData, setVtData] = useState(null);
+  const [abuseData, setAbuseData] = useState(null);
+  const [errorMsg, setErrorMsg] = useState("");
 
   const lookup = async (target) => {
     const q = (target || query).trim();
     if (!q) return;
     setLoading(true);
-    setReport(null);
-    try {
-      const res = await api("/api/intel", {
-        method: "POST",
-        body: JSON.stringify({ query: q }),
-      });
-      const data = await res.json();
-      setReport(data.report || "Sonuç bulunamadı.");
-    } catch {
-      setReport("İstihbarat servisine bağlanılamadı.");
+    setErrorMsg("");
+
+    if (intelTab === "shodan") {
+      setReport(null);
+      try {
+        const res = await api("/api/intel", {
+          method: "POST",
+          body: JSON.stringify({ query: q }),
+        });
+        const data = await res.json();
+        setReport(data.report || "Sonuç bulunamadı.");
+      } catch {
+        setErrorMsg("İstihbarat servisine bağlanılamadı.");
+      }
+    } else if (intelTab === "vt") {
+      setVtData(null);
+      try {
+        const res = await api("/api/intel/vt", {
+          method: "POST",
+          body: JSON.stringify({ target: q }),
+        });
+        const data = await res.json();
+        if (data.ok && data.data) {
+          setVtData(data.data);
+        } else {
+          setErrorMsg(data.error || "VirusTotal kaydı bulunamadı veya API anahtarı geçersiz.");
+        }
+      } catch {
+        setErrorMsg("VirusTotal servisine erişilemedi.");
+      }
+    } else if (intelTab === "abuse") {
+      setAbuseData(null);
+      try {
+        const res = await api("/api/intel/abuse", {
+          method: "POST",
+          body: JSON.stringify({ ip: q }),
+        });
+        const data = await res.json();
+        if (data.ok && data.data) {
+          setAbuseData(data.data);
+        } else {
+          setErrorMsg(data.error || "AbuseIPDB sorgusu başarısız oldu (geçerli bir dış IP ve API anahtarı gerekir).");
+        }
+      } catch {
+        setErrorMsg("AbuseIPDB servisine erişilemedi.");
+      }
     }
     setLoading(false);
   };
@@ -631,7 +672,9 @@ function IntelView({ onSendToChat }) {
     if (e.key === "Enter") lookup();
   };
 
-  const quickSamples = ["1.1.1.1", "8.8.8.8", "9.9.9.9", "185.199.108.153"];
+  const shodanSamples = ["1.1.1.1", "8.8.8.8", "9.9.9.9", "185.199.108.153"];
+  const vtSamples = ["8.8.8.8", "google.com", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"];
+  const abuseSamples = ["118.25.6.39", "185.220.101.5", "45.154.255.86"];
 
   return html`
     <div class="flex-1 overflow-y-auto p-6 md:p-8 bg-[#09090b]">
@@ -639,11 +682,32 @@ function IntelView({ onSendToChat }) {
         <div class="border-b border-zinc-800 pb-4">
           <div class="flex items-center gap-2">
             <${Icon.Globe} />
-            <h2 class="text-base font-semibold text-zinc-100">Tehdit İstihbaratı & Shodan Analizi</h2>
+            <h2 class="text-base font-semibold text-zinc-100">Tehdit İstihbaratı Merkezi</h2>
           </div>
           <p class="text-xs text-zinc-500 mt-1">
-            IP adresleri, log satırları ve alan adları için Shodan InternetDB açık port, zafiyet (CVE) ve GeoIP sorgulaması.
+            Shodan InternetDB, VirusTotal v3 ve AbuseIPDB v2 ile IP, domain ve zararlı hash analizleri.
           </p>
+          <!-- Sub-tabs -->
+          <div class="flex items-center gap-2 mt-4">
+            <button
+              onClick=${() => { setIntelTab("shodan"); setErrorMsg(""); }}
+              class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${intelTab === 'shodan' ? 'bg-zinc-800 text-zinc-100 border border-zinc-700' : 'text-zinc-400 hover:text-zinc-200 bg-zinc-900/60'}"
+            >
+              🌐 Shodan InternetDB & GeoIP
+            </button>
+            <button
+              onClick=${() => { setIntelTab("vt"); setErrorMsg(""); }}
+              class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${intelTab === 'vt' ? 'bg-zinc-800 text-zinc-100 border border-zinc-700' : 'text-zinc-400 hover:text-zinc-200 bg-zinc-900/60'}"
+            >
+              🛡️ VirusTotal v3 (Hash / IP / Domain)
+            </button>
+            <button
+              onClick=${() => { setIntelTab("abuse"); setErrorMsg(""); }}
+              class="px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${intelTab === 'abuse' ? 'bg-zinc-800 text-zinc-100 border border-zinc-700' : 'text-zinc-400 hover:text-zinc-200 bg-zinc-900/60'}"
+            >
+              ⚡ AbuseIPDB v2 (Saldırı İtibarı)
+            </button>
+          </div>
         </div>
 
         <!-- Query Search Bar -->
@@ -653,7 +717,7 @@ function IntelView({ onSendToChat }) {
             value=${query}
             onChange=${(e) => setQuery(e.target.value)}
             onKeyDown=${handleKeyDown}
-            placeholder="IP adresi veya host girin (örn. 8.8.8.8)..."
+            placeholder=${intelTab === 'vt' ? 'IP, Domain veya Hash (MD5/SHA256) girin...' : intelTab === 'abuse' ? 'Dış IPv4 adresi girin...' : 'IP adresi veya host girin (örn. 8.8.8.8)...'}
             class="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3.5 py-2 text-xs font-mono text-zinc-100 placeholder-zinc-500 outline-none focus:border-zinc-600 transition-colors"
           />
           <button
@@ -667,26 +731,32 @@ function IntelView({ onSendToChat }) {
         </div>
 
         <div class="flex items-center gap-2 text-xs text-zinc-500">
-          <span>Örnekler:</span>
-          ${quickSamples.map(
+          <span>Hızlı Örnekler:</span>
+          ${(intelTab === 'vt' ? vtSamples : intelTab === 'abuse' ? abuseSamples : shodanSamples).map(
             (s) => html`
               <button
                 key=${s}
                 onClick=${() => { setQuery(s); lookup(s); }}
-                class="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 font-mono text-[11px] transition-colors"
+                class="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 font-mono text-[11px] truncate max-w-[200px] transition-colors"
               >
                 ${s}
               </button>`
           )}
         </div>
 
-        <!-- Intel Result Report -->
-        ${report && html`
+        ${errorMsg && html`
+          <div class="rounded-lg bg-red-950/40 border border-red-800/60 p-3 text-xs text-red-300">
+            ${errorMsg}
+          </div>
+        `}
+
+        <!-- Shodan Report -->
+        ${intelTab === "shodan" && report && html`
           <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-4">
             <div class="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <span class="text-xs font-mono text-zinc-400 uppercase tracking-wider">İstihbarat Raporu</span>
+              <span class="text-xs font-mono text-zinc-400 uppercase tracking-wider">Shodan Raporu</span>
               <button
-                onClick=${() => onSendToChat(`Aşağıdaki tehdit istihbaratı raporunu analiz et ve risk seviyesini değerlendir:\n\n${report}`)}
+                onClick=${() => onSendToChat(`Aşağıdaki Shodan tehdit istihbaratı raporunu analiz et ve risk seviyesini değerlendir:\n\n${report}`)}
                 class="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
               >
                 <${Icon.Sparkles} />
@@ -698,6 +768,239 @@ function IntelView({ onSendToChat }) {
             </div>
           </div>
         `}
+
+        <!-- VirusTotal Result Card -->
+        ${intelTab === "vt" && vtData && html`
+          <div class="rounded-xl border ${vtData.is_dangerous ? 'border-red-800/80 bg-red-950/20' : 'border-emerald-800/80 bg-emerald-950/20'} p-5 space-y-4">
+            <div class="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold uppercase px-2 py-0.5 rounded ${vtData.is_dangerous ? 'bg-red-500/20 text-red-400 border border-red-500/40' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'}">
+                  ${vtData.is_dangerous ? '🚨 ZARARLI TESPİT EDİLDİ' : '✓ TEMİZ / GÜVENLİ'}
+                </span>
+                <span class="text-xs font-mono text-zinc-300">${vtData.target} (${vtData.type})</span>
+              </div>
+              <button
+                onClick=${() => onSendToChat(`VirusTotal v3 analizi:\nHedef: ${vtData.target} (${vtData.type})\nSkor: ${vtData.score_label}\nZararlı: ${vtData.malicious}, Şüpheli: ${vtData.suspicious}, Güvenli: ${vtData.harmless}\nTopluluk Skoru: ${vtData.reputation}\n\nBu veriyi siber güvenlik açısından analiz et.`)}
+                class="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
+              >
+                <${Icon.Sparkles} />
+                <span>Asistanla Zafiyet Analizi Yap →</span>
+              </button>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+              <div class="bg-zinc-900/80 p-3 rounded-lg border border-zinc-800 text-center">
+                <div class="text-[10px] uppercase font-mono text-zinc-500">Zararlı Motor</div>
+                <div class="text-xl font-bold font-mono ${vtData.malicious > 0 ? 'text-red-400' : 'text-zinc-200'}">${vtData.malicious}</div>
+              </div>
+              <div class="bg-zinc-900/80 p-3 rounded-lg border border-zinc-800 text-center">
+                <div class="text-[10px] uppercase font-mono text-zinc-500">Şüpheli Motor</div>
+                <div class="text-xl font-bold font-mono ${vtData.suspicious > 0 ? 'text-amber-400' : 'text-zinc-200'}">${vtData.suspicious}</div>
+              </div>
+              <div class="bg-zinc-900/80 p-3 rounded-lg border border-zinc-800 text-center">
+                <div class="text-[10px] uppercase font-mono text-zinc-500">Temiz / Güvenli</div>
+                <div class="text-xl font-bold font-mono text-emerald-400">${vtData.harmless + vtData.undetected}</div>
+              </div>
+              <div class="bg-zinc-900/80 p-3 rounded-lg border border-zinc-800 text-center">
+                <div class="text-[10px] uppercase font-mono text-zinc-500">Topluluk Skoru</div>
+                <div class="text-xl font-bold font-mono ${vtData.reputation < 0 ? 'text-red-400' : 'text-zinc-200'}">${vtData.reputation}</div>
+              </div>
+            </div>
+          </div>
+        `}
+
+        <!-- AbuseIPDB Result Card -->
+        ${intelTab === "abuse" && abuseData && html`
+          <div class="rounded-xl border ${abuseData.abuse_score >= 40 ? 'border-red-800/80 bg-red-950/20' : abuseData.abuse_score >= 15 ? 'border-amber-800/80 bg-amber-950/20' : 'border-emerald-800/80 bg-emerald-950/20'} p-5 space-y-4">
+            <div class="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold uppercase px-2 py-0.5 rounded ${abuseData.abuse_score >= 40 ? 'bg-red-500/20 text-red-400 border border-red-500/40' : abuseData.abuse_score >= 15 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'}">
+                  ${abuseData.risk} RİSK (%${abuseData.abuse_score})
+                </span>
+                <span class="text-xs font-mono text-zinc-300">${abuseData.ip}</span>
+              </div>
+              <button
+                onClick=${() => onSendToChat(`AbuseIPDB v2 analizi:\nIP: ${abuseData.ip}\nKötü Niyetlilik Skoru: %${abuseData.abuse_score} (${abuseData.risk})\nÜlke: ${abuseData.country}\nISP: ${abuseData.isp}\nToplam Şikayet: ${abuseData.total_reports}\nSon Şikayet: ${abuseData.last_reported_at}\n\nBu IP adresinin tehdit durumunu ve alınması gereken önlemleri değerlendir.`)}
+                class="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
+              >
+                <${Icon.Sparkles} />
+                <span>Asistanla Zafiyet Analizi Yap →</span>
+              </button>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+              <div class="bg-zinc-900/80 p-3 rounded-lg border border-zinc-800">
+                <div class="text-[10px] uppercase font-mono text-zinc-500">Ülke & Konum</div>
+                <div class="text-sm font-semibold font-mono text-zinc-200 mt-1">${abuseData.country}</div>
+              </div>
+              <div class="bg-zinc-900/80 p-3 rounded-lg border border-zinc-800">
+                <div class="text-[10px] uppercase font-mono text-zinc-500">İnternet Servis Sağlayıcı (ISP)</div>
+                <div class="text-sm font-semibold text-zinc-200 mt-1 truncate" title=${abuseData.isp}>${abuseData.isp}</div>
+              </div>
+              <div class="bg-zinc-900/80 p-3 rounded-lg border border-zinc-800">
+                <div class="text-[10px] uppercase font-mono text-zinc-500">Toplam Şikayet / Rapor</div>
+                <div class="text-sm font-semibold font-mono text-zinc-200 mt-1">${abuseData.total_reports} adet</div>
+              </div>
+              <div class="bg-zinc-900/80 p-3 rounded-lg border border-zinc-800">
+                <div class="text-[10px] uppercase font-mono text-zinc-500">Son Şikayet Tarihi</div>
+                <div class="text-sm font-semibold font-mono text-zinc-200 mt-1 truncate">${abuseData.last_reported_at}</div>
+              </div>
+            </div>
+          </div>
+        `}
+      </div>
+    </div>`;
+}
+
+// --- API Keys & Provider Settings Workspace ---
+function ApiKeysView() {
+  const [keys, setKeys] = useState({
+    groq_api_key: "",
+    deepseek_api_key: "",
+    gemini_api_key: "",
+    openrouter_api_key: "",
+    virustotal_api_key: "",
+    abuseipdb_api_key: "",
+  });
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api("/api/settings/keys").then((r) => r.json()).then(setKeys).catch(() => {});
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await api("/api/settings/keys", {
+        method: "POST",
+        body: JSON.stringify(keys),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch {}
+    setSaving(false);
+  };
+
+  return html`
+    <div class="flex-1 overflow-y-auto p-6 md:p-8 bg-[#09090b]">
+      <div class="max-w-3xl mx-auto space-y-6">
+        <div class="border-b border-zinc-800 pb-4">
+          <div class="flex items-center gap-2">
+            <${Icon.Key} />
+            <h2 class="text-base font-semibold text-zinc-100">API Anahtarları & Yapay Zeka Sağlayıcıları</h2>
+          </div>
+          <p class="text-xs text-zinc-500 mt-1">
+            Çoklu model ve tehdit istihbaratı entegrasyonları için API anahtarlarınızı yapılandırın. Tüm anahtarlar yerel makinenizde saklanır.
+          </p>
+        </div>
+
+        <div class="space-y-4">
+          <!-- Groq -->
+          <div class="bg-zinc-900/50 p-4 rounded-xl border border-zinc-800 space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-semibold text-amber-400">⚡ Groq LPU API Key (Llama 3.3 70B - 500 tok/sn)</label>
+              <a href="https://console.groq.com/keys" target="_blank" class="text-[11px] text-zinc-400 hover:text-zinc-200 underline">Ücretsiz Al ↗</a>
+            </div>
+            <input
+              type="password"
+              value=${keys.groq_api_key || ""}
+              onInput=${(e) => setKeys({ ...keys, groq_api_key: e.target.value })}
+              placeholder="gsk_..."
+              class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-zinc-100 focus:outline-none focus:border-amber-500/60"
+            />
+          </div>
+
+          <!-- DeepSeek -->
+          <div class="bg-zinc-900/50 p-4 rounded-xl border border-zinc-800 space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-semibold text-cyan-400">🧠 DeepSeek R1 API Key (Akıl Yürütme Zinciri)</label>
+              <a href="https://platform.deepseek.com/api_keys" target="_blank" class="text-[11px] text-zinc-400 hover:text-zinc-200 underline">Anahtar Al ↗</a>
+            </div>
+            <input
+              type="password"
+              value=${keys.deepseek_api_key || ""}
+              onInput=${(e) => setKeys({ ...keys, deepseek_api_key: e.target.value })}
+              placeholder="sk-..."
+              class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-zinc-100 focus:outline-none focus:border-cyan-500/60"
+            />
+          </div>
+
+          <!-- Gemini -->
+          <div class="bg-zinc-900/50 p-4 rounded-xl border border-zinc-800 space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-semibold text-emerald-400">🌐 Google Gemini API Key (Gemini 3 Flash & Pro)</label>
+              <a href="https://aistudio.google.com/apikey" target="_blank" class="text-[11px] text-zinc-400 hover:text-zinc-200 underline">Ücretsiz Al ↗</a>
+            </div>
+            <input
+              type="password"
+              value=${keys.gemini_api_key || ""}
+              onInput=${(e) => setKeys({ ...keys, gemini_api_key: e.target.value })}
+              placeholder="AIza..."
+              class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-zinc-100 focus:outline-none focus:border-emerald-500/60"
+            />
+          </div>
+
+          <!-- OpenRouter -->
+          <div class="bg-zinc-900/50 p-4 rounded-xl border border-zinc-800 space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-semibold text-purple-400">🧭 OpenRouter API Key (Evrensel & :free Modeller)</label>
+              <a href="https://openrouter.ai/keys" target="_blank" class="text-[11px] text-zinc-400 hover:text-zinc-200 underline">Ücretsiz Al ↗</a>
+            </div>
+            <input
+              type="password"
+              value=${keys.openrouter_api_key || ""}
+              onInput=${(e) => setKeys({ ...keys, openrouter_api_key: e.target.value })}
+              placeholder="sk-or-..."
+              class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-zinc-100 focus:outline-none focus:border-purple-500/60"
+            />
+          </div>
+
+          <!-- VirusTotal -->
+          <div class="bg-zinc-900/50 p-4 rounded-xl border border-zinc-800 space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-semibold text-blue-400">🛡️ VirusTotal v3 API Key (Dosya / IP / Domain Taraması)</label>
+              <a href="https://www.virustotal.com/gui/user-profile" target="_blank" class="text-[11px] text-zinc-400 hover:text-zinc-200 underline">Ücretsiz Al ↗</a>
+            </div>
+            <input
+              type="password"
+              value=${keys.virustotal_api_key || ""}
+              onInput=${(e) => setKeys({ ...keys, virustotal_api_key: e.target.value })}
+              placeholder="VT API Key..."
+              class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-zinc-100 focus:outline-none focus:border-blue-500/60"
+            />
+          </div>
+
+          <!-- AbuseIPDB -->
+          <div class="bg-zinc-900/50 p-4 rounded-xl border border-zinc-800 space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-semibold text-amber-300">⚡ AbuseIPDB v2 API Key (IP Kötü Niyetlilik & Saldırı Skoru)</label>
+              <a href="https://www.abuseipdb.com/account/api" target="_blank" class="text-[11px] text-zinc-400 hover:text-zinc-200 underline">Ücretsiz Al ↗</a>
+            </div>
+            <input
+              type="password"
+              value=${keys.abuseipdb_api_key || ""}
+              onInput=${(e) => setKeys({ ...keys, abuseipdb_api_key: e.target.value })}
+              placeholder="AbuseIPDB API Key..."
+              class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-zinc-100 focus:outline-none focus:border-amber-500/60"
+            />
+          </div>
+
+          <div class="flex items-center gap-3 pt-2">
+            <button
+              onClick=${handleSave}
+              disabled=${saving}
+              class="px-5 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs transition-colors flex items-center gap-1.5"
+            >
+              <${Icon.Check} />
+              <span>${saving ? 'Kaydediliyor...' : 'Anahtarları Kaydet'}</span>
+            </button>
+            ${saved && html`
+              <span class="text-xs text-emerald-400 font-medium">✓ API anahtarları başarıyla güncellendi!</span>
+            `}
+          </div>
+        </div>
       </div>
     </div>`;
 }
@@ -1376,6 +1679,7 @@ function App() {
             { id: "score", label: "CIS Güvenlik Skoru", icon: Icon.ShieldCheck },
             { id: "notes", label: "Vaka Defteri", icon: Icon.BookOpen },
             { id: "memory", label: "Kalıcı Bellek", icon: Icon.Brain },
+            { id: "keys", label: "API Anahtarları", icon: Icon.Key },
           ].map((t) => html`
             <button
               key=${t.id}
@@ -1487,7 +1791,7 @@ function App() {
               </div>
             ` : html`
               <span class="text-xs font-medium text-zinc-300 font-sans">
-                ${tab === "agents" ? "SecAI Ajanları" : tab === "intel" ? "Tehdit İstihbaratı" : tab === "baseline" ? "Sistem Baseline & Sapma" : tab === "score" ? "Güvenlik Skoru" : tab === "notes" ? "Vaka Defteri" : "Kalıcı Bellek"}
+                ${tab === "agents" ? "SecAI Ajanları" : tab === "intel" ? "Tehdit İstihbaratı" : tab === "baseline" ? "Sistem Baseline & Sapma" : tab === "score" ? "Güvenlik Skoru" : tab === "notes" ? "Vaka Defteri" : tab === "keys" ? "API Anahtarları" : "Kalıcı Bellek"}
               </span>
             `}
           </div>
@@ -1546,36 +1850,100 @@ function App() {
                 class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-300 hover:border-zinc-700 transition-colors"
                 title="Modeli Değiştir"
               >
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                <span>${status ? status.model : "yerel"}</span>
+                <span class="w-1.5 h-1.5 rounded-full ${status?.provider === 'groq' ? 'bg-amber-400' : status?.provider === 'deepseek' ? 'bg-cyan-400' : 'bg-emerald-400'}"></span>
+                <span class="truncate max-w-[150px]">${status ? status.model : "yerel"}</span>
                 <${Icon.ChevronDown} />
               </button>
 
               ${modelMenuOpen && html`
-                <div class="absolute right-0 mt-1.5 w-60 rounded-lg bg-zinc-900 border border-zinc-800 shadow-2xl py-1 z-50 text-xs">
-                  <div class="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-zinc-500 border-b border-zinc-800">Yerel Ollama Modelleri</div>
-                  ${(modelsData?.ollama_models || ["gemma3:4b", "qwen2.5-coder:7b"]).map((m) => html`
-                    <button
-                      key=${m}
-                      onClick=${() => switchModel("ollama", m)}
-                      class="w-full text-left px-3 py-2 hover:bg-zinc-800 flex items-center justify-between ${status?.model === m ? 'text-emerald-400 font-semibold' : 'text-zinc-300'}"
-                    >
-                      <span class="font-mono text-xs">${m}</span>
-                      ${status?.model === m && html`<${Icon.Check} />`}
-                    </button>
-                  `)}
+                <div class="absolute right-0 mt-1.5 w-72 max-h-[80vh] overflow-y-auto rounded-lg bg-zinc-900 border border-zinc-800 shadow-2xl py-1 z-50 text-xs divide-y divide-zinc-800/60">
+                  
+                  <!-- Groq LPU -->
+                  <div class="py-1">
+                    <div class="px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-amber-400 flex items-center justify-between">
+                      <span>⚡ Groq LPU (500 tok/sn)</span>
+                      ${!modelsData?.has_groq_key && html`<span class="text-[9px] text-zinc-500 lowercase">(key yok)</span>`}
+                    </div>
+                    ${(modelsData?.groq_models || []).map((m) => html`
+                      <button
+                        key=${m}
+                        onClick=${() => switchModel("groq", m)}
+                        class="w-full text-left px-3 py-1.5 hover:bg-zinc-800 flex items-center justify-between ${status?.model === m ? 'text-amber-300 font-semibold bg-amber-500/10' : 'text-zinc-300'}"
+                      >
+                        <span class="font-mono text-xs truncate">${m}</span>
+                        ${status?.model === m && html`<${Icon.Check} />`}
+                      </button>
+                    `)}
+                  </div>
 
-                  <div class="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-zinc-500 border-t border-b border-zinc-800 mt-1">Google Gemini API</div>
-                  ${["gemini-2.5-flash", "gemini-3-flash-preview"].map((m) => html`
-                    <button
-                      key=${m}
-                      onClick=${() => switchModel("gemini", m)}
-                      class="w-full text-left px-3 py-2 hover:bg-zinc-800 flex items-center justify-between ${status?.model === m ? 'text-emerald-400 font-semibold' : 'text-zinc-300'}"
-                    >
-                      <span class="font-mono text-xs">${m}</span>
-                      ${status?.model === m && html`<${Icon.Check} />`}
-                    </button>
-                  `)}
+                  <!-- DeepSeek R1 -->
+                  <div class="py-1">
+                    <div class="px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-cyan-400 flex items-center justify-between">
+                      <span>🧠 DeepSeek R1 (Akıl Yürütme)</span>
+                      ${!modelsData?.has_deepseek_key && html`<span class="text-[9px] text-zinc-500 lowercase">(key yok)</span>`}
+                    </div>
+                    ${(modelsData?.deepseek_models || []).map((m) => html`
+                      <button
+                        key=${m}
+                        onClick=${() => switchModel("deepseek", m)}
+                        class="w-full text-left px-3 py-1.5 hover:bg-zinc-800 flex items-center justify-between ${status?.model === m ? 'text-cyan-300 font-semibold bg-cyan-500/10' : 'text-zinc-300'}"
+                      >
+                        <span class="font-mono text-xs truncate">${m}</span>
+                        ${status?.model === m && html`<${Icon.Check} />`}
+                      </button>
+                    `)}
+                  </div>
+
+                  <!-- Google Gemini -->
+                  <div class="py-1">
+                    <div class="px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-emerald-400 flex items-center justify-between">
+                      <span>🌐 Google Gemini API</span>
+                      ${!modelsData?.has_gemini_key && html`<span class="text-[9px] text-zinc-500 lowercase">(key yok)</span>`}
+                    </div>
+                    ${(modelsData?.gemini_models || ["gemini-3-flash-preview"]).map((m) => html`
+                      <button
+                        key=${m}
+                        onClick=${() => switchModel("gemini", m)}
+                        class="w-full text-left px-3 py-1.5 hover:bg-zinc-800 flex items-center justify-between ${status?.model === m ? 'text-emerald-400 font-semibold bg-emerald-500/10' : 'text-zinc-300'}"
+                      >
+                        <span class="font-mono text-xs truncate">${m}</span>
+                        ${status?.model === m && html`<${Icon.Check} />`}
+                      </button>
+                    `)}
+                  </div>
+
+                  <!-- OpenRouter -->
+                  <div class="py-1">
+                    <div class="px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-purple-400 flex items-center justify-between">
+                      <span>🧭 OpenRouter Free Tier</span>
+                      ${!modelsData?.has_openrouter_key && html`<span class="text-[9px] text-zinc-500 lowercase">(key yok)</span>`}
+                    </div>
+                    ${(modelsData?.openrouter_models || []).map((m) => html`
+                      <button
+                        key=${m}
+                        onClick=${() => switchModel("openrouter", m)}
+                        class="w-full text-left px-3 py-1.5 hover:bg-zinc-800 flex items-center justify-between ${status?.model === m ? 'text-purple-300 font-semibold bg-purple-500/10' : 'text-zinc-300'}"
+                      >
+                        <span class="font-mono text-xs truncate">${m}</span>
+                        ${status?.model === m && html`<${Icon.Check} />`}
+                      </button>
+                    `)}
+                  </div>
+
+                  <!-- Yerel Ollama -->
+                  <div class="py-1">
+                    <div class="px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-zinc-500">🖥️ Yerel Ollama (RTX 4050)</div>
+                    ${(modelsData?.ollama_models || ["qwen2.5-coder:7b"]).map((m) => html`
+                      <button
+                        key=${m}
+                        onClick=${() => switchModel("ollama", m)}
+                        class="w-full text-left px-3 py-1.5 hover:bg-zinc-800 flex items-center justify-between ${status?.model === m ? 'text-emerald-400 font-semibold bg-emerald-500/10' : 'text-zinc-300'}"
+                      >
+                        <span class="font-mono text-xs truncate">${m}</span>
+                        ${status?.model === m && html`<${Icon.Check} />`}
+                      </button>
+                    `)}
+                  </div>
                 </div>
               `}
             </div>
@@ -1591,6 +1959,7 @@ function App() {
           ${tab === "score" && html`<${ScoreView} onSendToChat=${handleSendToChat} />`}
           ${tab === "notes" && html`<${NotesView} />`}
           ${tab === "memory" && html`<${MemoryView} />`}
+          ${tab === "keys" && html`<${ApiKeysView} />`}
         </div>
       </div>
     </div>`;
