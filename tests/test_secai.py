@@ -313,10 +313,10 @@ class SecAITestSuite(unittest.TestCase):
     def test_multi_provider_llm_config(self):
         from secai.config import get_active_llm_info, save_settings
 
-        save_settings({"provider": "groq", "groq_api_key": "gsk_unit_test", "groq_model": "llama-3.3-70b-versatile"})
+        save_settings({"provider": "groq", "groq_api_key": "gsk_unit_test", "groq_model": "openai/gpt-oss-120b"})
         info = get_active_llm_info()
         self.assertEqual(info["provider"], "groq")
-        self.assertEqual(info["model"], "llama-3.3-70b-versatile")
+        self.assertEqual(info["model"], "openai/gpt-oss-120b")
         self.assertEqual(info["api_key"], "gsk_unit_test")
 
         save_settings({"provider": "deepseek", "deepseek_api_key": "sk_ds_test", "deepseek_model": "deepseek-reasoner"})

@@ -10,16 +10,15 @@ APP_NAME = "secai"
 DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 DEFAULT_OLLAMA_MODEL = os.environ.get("SECAI_MODEL", "qwen2.5-coder:7b")
 DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview"
-DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
 DEFAULT_DEEPSEEK_MODEL = "deepseek-reasoner"
 DEFAULT_OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 DEFAULT_TTS_VOICE = "tr-TR-AhmetNeural"
 
 GROQ_MODELS = [
-    "llama-3.3-70b-versatile",
-    "qwen-2.5-coder-32b",
-    "deepseek-r1-distill-llama-70b",
-    "mixtral-8x7b-32768",
+    "openai/gpt-oss-120b",
+    "qwen/qwen3.8-27b",
+    "openai/gpt-oss-20b",
 ]
 
 DEEPSEEK_MODELS = [
