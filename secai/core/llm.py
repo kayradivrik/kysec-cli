@@ -275,11 +275,16 @@ def _stream_openai_compat(
                 yield f"\n\n**{provider.upper()} API Hatası ({resp.status_code}):** {err_body}\n"
                 return
 
+            resp.encoding = "utf-8"
             in_reasoning = False
-            for raw_line in resp.iter_lines(decode_unicode=True):
+            for raw_line in resp.iter_lines():
                 if not raw_line:
                     continue
-                line = raw_line.strip()
+                line = (
+                    raw_line.decode("utf-8", errors="replace").strip()
+                    if isinstance(raw_line, bytes)
+                    else raw_line.strip()
+                )
                 if not line.startswith("data:"):
                     continue
                 json_str = line[5:].strip()
@@ -374,11 +379,20 @@ def stream_generate(
                 )
             resp.raise_for_status()
 
+            resp.encoding = "utf-8"
             in_think = False
-            for line in resp.iter_lines(decode_unicode=True):
-                if not line:
+            for raw_line in resp.iter_lines():
+                if not raw_line:
                     continue
-                chunk = json.loads(line)
+                line = (
+                    raw_line.decode("utf-8", errors="replace").strip()
+                    if isinstance(raw_line, bytes)
+                    else raw_line.strip()
+                )
+                try:
+                    chunk = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
                 token = chunk.get("response", "")
                 if token:
                     if "<think>" in token:
@@ -480,11 +494,20 @@ def stream_chat(
                 )
             resp.raise_for_status()
 
+            resp.encoding = "utf-8"
             in_think = False
-            for line in resp.iter_lines(decode_unicode=True):
-                if not line:
+            for raw_line in resp.iter_lines():
+                if not raw_line:
                     continue
-                chunk = json.loads(line)
+                line = (
+                    raw_line.decode("utf-8", errors="replace").strip()
+                    if isinstance(raw_line, bytes)
+                    else raw_line.strip()
+                )
+                try:
+                    chunk = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
                 msg = chunk.get("message", {})
                 token = msg.get("content", "")
                 if token:
